@@ -1,0 +1,10 @@
+pandas
+numpy
+uuid
+sortedcontainers
+tabulate
+termcolor
+tqdm
+datetime
+nbformat>=4.2.0
+plotly

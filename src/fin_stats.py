@@ -3,6 +3,7 @@ import linecache
 import pandas as pd
 from src.time_series import TS
 from typing import Tuple, List, Union
+
 """
 Files need to have the following format:
 first column needs to be a string representing time up to ms
@@ -13,7 +14,7 @@ dates will always be handled as timestamps
 NA_VAL = -9999999
 
 
-def log_ret_(ts : TS) -> TS:
+def log_ret_(ts: TS) -> TS:
     """
     returns a copy of ts with the log-returns as values
     """
@@ -24,7 +25,8 @@ def log_ret_(ts : TS) -> TS:
 
     return res
 
-def mean_(ts : TS) -> List:
+
+def mean_(ts: TS) -> List:
     """
     returns annualized volatility of time series
     TO DO: how to handle if multiple time series
@@ -35,7 +37,8 @@ def mean_(ts : TS) -> List:
         res.append(np.nanmean(col))
     return res if len(res) > 1 else res[0]
 
-def vol_(ts : Union[TS, pd.DataFrame], multiplier : float = None) -> List:
+
+def vol_(ts: Union[TS, pd.DataFrame], multiplier: float = None) -> List:
     """
     returns annualized volatility of time series
     TO DO: how to handle if multiple time series
@@ -48,13 +51,14 @@ def vol_(ts : Union[TS, pd.DataFrame], multiplier : float = None) -> List:
         return res if len(res) > 1 else res[0]
     elif isinstance(ts, pd.DataFrame):
         if not multiplier:
-            raise("I need a multiplier to annualize the vol")
+            raise ("I need a multiplier to annualize the vol")
         else:
-            return 
+            return
     else:
-        raise("Don't know that type of input")
+        raise ("Don't know that type of input")
 
-def std_(ts : TS) -> List:
+
+def std_(ts: TS) -> List:
     """
     returns annualized volatility of time series
     TO DO: how to handle if multiple time series
@@ -65,7 +69,8 @@ def std_(ts : TS) -> List:
         res.append(np.nanstd(col))
     return res if len(res) > 1 else res[0]
 
-def one_(ts : TS) -> TS:
+
+def one_(ts: TS) -> TS:
     res = ts.copy()
     # TO DO : Parallelize this
     for i, col in enumerate(res.values):
@@ -73,7 +78,8 @@ def one_(ts : TS) -> TS:
 
     return res
 
-def cumsum_(ts : TS) -> TS:
+
+def cumsum_(ts: TS) -> TS:
     res = ts.copy()
     # TO DO : Parallelize this
     for i, col in enumerate(res.values):
@@ -81,8 +87,8 @@ def cumsum_(ts : TS) -> TS:
 
     return res
 
-def bollinger_bands_(ts: TS,
-                    num_std: int) -> List:
+
+def bollinger_bands_(ts: TS, num_std: int) -> List:
 
     res = []
     means = mean_(ts)
@@ -92,9 +98,3 @@ def bollinger_bands_(ts: TS,
     for mean, vol in zip(means, vols):
         res.append([mean, mean - num_std * vol, mean + num_std * vol])
     return res
-
-
-    
-
-
-    

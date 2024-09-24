@@ -13,7 +13,7 @@ def main():
     n_points = 10
     step_size = 1
     order_book = OrderBook()
-    transactions, res, order_book = kandel_simulator(
+    _, res, order_book = kandel_simulator(
         ts=ts,
         quote=quote,
         base=base,

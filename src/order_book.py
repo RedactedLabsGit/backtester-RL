@@ -68,6 +68,24 @@ class OrderBook:
             columns=["Side", "Size", "Price", "Total"],
         ).sort_values(["Side", "Price"], ascending=(True, False))
 
+    def to_dict(self):
+        if not self.bids and not self.asks:
+            return {"bids": [], "asks": []}
+        if not self.bids:
+            return {
+                "bids": [],
+                "asks": [a.price for a in self.asks],
+            }
+        if not self.asks:
+            return {
+                "bids": [b.price for b in self.bids],
+                "asks": [],
+            }
+        return {
+            "bids": [b.price for b in self.bids],
+            "asks": [a.price for a in self.asks],
+        }
+
     def copy(self):
         return OrderBook(self.bids, self.asks)
 
@@ -219,11 +237,10 @@ def arbitrage_order_book(
     while bids and price <= bids[0].price:
         transaction = bids.pop(0)
         transactions.append(transaction)
-        bid = bids[0] if len(bids) else None
     while asks and price >= asks[0].price:
         transaction = asks.pop(0)
         transactions.append(transaction)
-        ask = asks[0] if len(asks) > 0 else None
+
     return (transactions, OrderBook(bids, asks))
 
 

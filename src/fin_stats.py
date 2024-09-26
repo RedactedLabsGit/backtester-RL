@@ -38,7 +38,7 @@ def mean_(ts: TS) -> List:
     return res if len(res) > 1 else res[0]
 
 
-def vol_(ts: Union[TS, pd.DataFrame], multiplier: float = None) -> List:
+def vol_(ts: Union[TS, pd.DataFrame], multiplier: float = None) -> list | float:
     """
     returns annualized volatility of time series
     TO DO: how to handle if multiple time series

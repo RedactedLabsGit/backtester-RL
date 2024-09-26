@@ -1,8 +1,6 @@
 import numpy as np
-import linecache
 import pandas as pd
 from typing import Tuple, Union
-import datetime
 
 """
 Files need to have the following format:
@@ -124,6 +122,27 @@ class TS:
         res.col_names = np.concatenate((res.col_names, [col_name]))
         res.values = np.concatenate((res.values, [new_values]), axis=0)
         return res
+
+    def pct_change(self, periods: int = 1):
+        return TS(
+            row_names=self.row_names[periods:],
+            unit=self.unit,
+            n_rows=self.n_rows - periods,
+            col_names=self.col_names,
+            values=np.diff(self.values, periods) / self.values[:, :-periods],
+        )
+
+    def rolling(self, window: int, func: callable):
+        res = np.zeros((self.n_cols, self.n_rows - window + 1))
+        for i in range(self.n_rows - window + 1):
+            res[:, i] = func(self.values[:, i : i + window], axis=1)
+        return TS(
+            row_names=self.row_names[window - 1 :],
+            unit=self.unit,
+            n_rows=self.n_rows - window + 1,
+            col_names=self.col_names,
+            values=res,
+        )
 
 
 def get_timedelta_unit(timedelta: pd.Timedelta) -> str:

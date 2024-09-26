@@ -116,8 +116,8 @@ def add_limit_order(order: Order, order_book: OrderBook) -> OrderBook:
         if (order_book and order_book.asks)
         else SortedList()
     )
+
     res = OrderBook(bids, asks)
-    # id(res) == id(order_book)
     order.price = round(order.price, DECIMALS)
     order.qty = round(order.qty, DECIMALS)
 
@@ -135,9 +135,7 @@ def add_limit_order(order: Order, order_book: OrderBook) -> OrderBook:
             idx_bid = None
 
         if idx_bid is not None:
-            # updated_bid = bids[idx_bid].copy()
             res.bids[idx_bid].qty += round(order.qty, DECIMALS)
-            # bids[idx_bid] = updated_bid
         else:
             bids.add(order)
 
@@ -153,10 +151,7 @@ def add_limit_order(order: Order, order_book: OrderBook) -> OrderBook:
             idx_ask = None
 
         if idx_ask is not None:
-            # updated_ask = asks[idx_bid].copy()
             res.asks[idx_ask].qty += round(order.qty, DECIMALS)
-            # asks[idx_bid] = updated_ask
-            # asks[idx_ask].qty += round(order.qty, DECIMALS)
         else:
             asks.add(order)
     else:
@@ -231,17 +226,20 @@ def arbitrage_order_book(
     returns (transactions, order_book)
     """
     transactions = []
-    # If price > best ask
-    bids = order_book.bids.copy() if order_book.bids else None
-    asks = order_book.asks.copy() if order_book.asks else None
-    while bids and price <= bids[0].price:
-        transaction = bids.pop(0)
-        transactions.append(transaction)
-    while asks and price >= asks[0].price:
-        transaction = asks.pop(0)
-        transactions.append(transaction)
 
-    return (transactions, OrderBook(bids, asks))
+    if order_book.bids:
+        transactions.extend(order for order in order_book.bids if price <= order.price)
+        order_book.bids = SortedList(
+            [order for order in order_book.bids if price > order.price]
+        )
+
+    if order_book.asks:
+        transactions.extend(order for order in order_book.asks if price >= order.price)
+        order_book.asks = SortedList(
+            [order for order in order_book.asks if price < order.price]
+        )
+
+    return transactions, order_book
 
 
 def build_book(capital: float, price_grid: List, initial_price: float) -> OrderBook:

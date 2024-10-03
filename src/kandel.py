@@ -2,6 +2,7 @@ from typing import List, Tuple, Callable, Union
 import numpy as np
 from sortedcontainers import SortedList
 from tqdm import tqdm
+from pandas import Series
 
 from src.time_series import TS, col_concat
 from src.order_book import (
@@ -92,6 +93,8 @@ def kandel_simulator(
     n_points: int,
     step_size: int,
     window: int,
+    historical_vol: Series,
+    implied_vol: Series,
 ) -> tuple[list, TS, list]:
 
     # Results Initialization
@@ -116,47 +119,57 @@ def kandel_simulator(
     order_book_history.append(order_book)
 
     # For every unit of time starting at window
+    first_exit = True
     for i in tqdm(range(window, ts.n_rows)):
         spot_price = ts.values[0][i]
 
-        transactions, order_book = arbitrage_order_book(
-            price=spot_price, order_book=order_book
-        )
-        tot_transactions.append(transactions)
+        if historical_vol.iloc[i] / implied_vol.iloc[i] > 0.5:
+            if first_exit:
+                quote = (quote + base * spot_price) / 2
+                base = quote / spot_price
+                first_exit = False
+            order_book = OrderBook()
+            order_book_history.append(OrderBook())
+            transactions = []
+            tot_transactions.append([])
 
-        (quote, base), order_book = kandel_reset(
-            quote,
-            base,
-            spot_price,
-            price_grid,
-            step_size,
-            transactions,
-            order_book,
-            init=False,
-        )
-        order_book_history.append(order_book)
-
-        if i % window == 0:
-
-            # if reset time then reset price_grid
-            # print('Reset')
-            price_grid = geom_price_grid(
-                ts[i - window : i], spot_price, vol_mult, n_points
+        else:
+            first_exit = True
+            transactions, order_book = arbitrage_order_book(
+                price=spot_price, order_book=order_book
             )
+            tot_transactions.append(transactions)
 
-            # Sell all base before rebalancing
-            quote = quote + base * spot_price
-            base = 0
             (quote, base), order_book = kandel_reset(
                 quote,
                 base,
                 spot_price,
                 price_grid,
                 step_size,
-                transactions=[],
-                order_book=OrderBook(),
-                init=True,
+                transactions,
+                order_book,
+                init=False,
             )
+            order_book_history.append(order_book)
+
+            if i % window == 0:
+                price_grid = geom_price_grid(
+                    ts[i - window : i], spot_price, vol_mult, n_points
+                )
+
+                # Sell all base before rebalancing
+                quote = quote + base * spot_price
+                base = 0
+                (quote, base), order_book = kandel_reset(
+                    quote,
+                    base,
+                    spot_price,
+                    price_grid,
+                    step_size,
+                    transactions=[],
+                    order_book=OrderBook(),
+                    init=True,
+                )
 
         quotes[i] = quote
         bases[i] = base

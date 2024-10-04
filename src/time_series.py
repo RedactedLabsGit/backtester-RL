@@ -15,13 +15,6 @@ class TS:
     Time Series Model
     """
 
-    row_names: pd.DatetimeIndex
-    unit: Tuple[int, str]
-    n_rows: int
-    col_names: np.array
-    n_cols: int
-    values: np.array
-
     def __init__(
         self,
         row_names: pd.DatetimeIndex,
@@ -145,7 +138,7 @@ class TS:
         )
 
 
-def get_timedelta_unit(timedelta: pd.Timedelta) -> str:
+def get_timedelta_unit(timedelta: pd.Timedelta) -> tuple[int, str]:
     if timedelta.components.days != 0:
         return (timedelta.components.days, "d")
     elif timedelta.components.hours != 0:
@@ -154,11 +147,11 @@ def get_timedelta_unit(timedelta: pd.Timedelta) -> str:
         return (timedelta.components.minutes, "m")
     elif timedelta.components.seconds != 0:
         return (timedelta.components.seconds, "s")
-    else:
-        return (
-            timedelta.components.milliseconds,
-            "ms",
-        )  # Default unit if all others are 0
+
+    return (
+        timedelta.components.milliseconds,
+        "ms",
+    )  # Default unit if all others are 0
 
 
 def load_csv(path: str, ffill: bool = True) -> TS:
@@ -170,7 +163,7 @@ def load_csv(path: str, ffill: bool = True) -> TS:
     temp.index = pd.to_datetime(temp.index, unit="s")  # TO DO: what if other unit?
     # check if index has "holes"
     unit = get_timedelta_unit(temp.index.diff().dropna().min())
-    if not temp.index.diff().dropna().nunique() == 1:
+    if temp.index.diff().dropna().nunique() != 1:
         if ffill:
             most_common_diff = temp.index.diff().value_counts().idxmax()
             new_index = pd.date_range(
@@ -205,11 +198,11 @@ def col_concat(t: TS, s: TS) -> TS:
     elif not (t.row_names == s.row_names).all():
         # TO DO: handle this case
         raise ("Cannot concat, different index")
-    else:
-        return TS(
-            row_names=t.row_names,
-            unit=t.unit,
-            n_rows=t.n_rows,
-            col_names=np.concatenate([t.col_names, s.col_names]),
-            values=np.concatenate([t.values, s.values]),
-        )
+
+    return TS(
+        row_names=t.row_names,
+        unit=t.unit,
+        n_rows=t.n_rows,
+        col_names=np.concatenate([t.col_names, s.col_names]),
+        values=np.concatenate([t.values, s.values]),
+    )

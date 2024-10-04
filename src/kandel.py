@@ -118,7 +118,6 @@ def kandel_simulator(
     )
     order_book_history.append(order_book)
 
-    # For every unit of time starting at window
     first_exit = True
     for i in tqdm(range(window, ts.n_rows)):
         spot_price = ts.values[0][i]
@@ -136,7 +135,7 @@ def kandel_simulator(
         else:
             first_exit = True
             transactions, order_book = arbitrage_order_book(
-                price=spot_price, order_book=order_book
+                price=spot_price, order_book=order_book.copy()
             )
             tot_transactions.append(transactions)
 
@@ -147,7 +146,7 @@ def kandel_simulator(
                 price_grid,
                 step_size,
                 transactions,
-                order_book,
+                order_book.copy(),
                 init=False,
             )
             order_book_history.append(order_book)

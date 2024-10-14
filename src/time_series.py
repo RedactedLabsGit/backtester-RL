@@ -160,7 +160,9 @@ def load_csv(path: str, ffill: bool = True) -> TS:
     TO DO: not use pandas, check if there is a faster way
     """
     temp = pd.read_csv(path, index_col=0, sep=",")
-    temp.index = pd.to_datetime(temp.index, unit="s")  # TO DO: what if other unit?
+    temp.index = pd.to_datetime(
+        temp.index, unit="s", utc=True
+    )  # TO DO: what if other unit?
     # check if index has "holes"
     unit = get_timedelta_unit(temp.index.diff().dropna().min())
     if temp.index.diff().dropna().nunique() != 1:

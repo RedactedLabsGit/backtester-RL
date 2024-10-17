@@ -97,7 +97,6 @@ def kandel_simulator(
     step_size: int,
     window: int,
     historical_vol: Series,
-    implied_vol: Series,
     vol_threshold: float,
 ) -> tuple[list, TS, list]:
 

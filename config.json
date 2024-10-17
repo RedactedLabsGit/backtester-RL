@@ -1,0 +1,18 @@
+{
+    "_": "Configuration file for both backtester (samples and long periods).",
+    "_doc_window": "- time in hours before rebalancing, the vol is also computed on this time window.",
+    "window": 24,
+    "_doc_quote": "- the size of bids in {quote asset} at the beginning.",
+    "quote": 37500,
+    "_doc_base": "- the size of asks in {quote asset} at the beginning, the simulator will swap to base asset at day 0.",
+    "base": 37500,
+    "vol_mult": 1.645,
+    "n_points": 10,
+    "step_size": 1,
+    "_doc_vol_threshold": "- if the vol is above this value, the position will be exited.",
+    "vol_threshold": 19,
+    "_doc_vol_threshold_window": "- time window in hours to compute the vol threshold from.",
+    "vol_threshold_window": 12,
+    "_doc_samples_length": "SAMPLES ONLY - the period of one sample in days (excluding window).",
+    "samples_length": 3
+}

@@ -32,6 +32,9 @@ def kandel_reset(
         order_book = build_book(
             capital=quote + base * price, price_grid=price_grid, initial_price=price
         )
+        if base == 0:
+            quote /= 2
+            base = quote / price
 
         return ((quote, base), order_book)
 
@@ -95,6 +98,7 @@ def kandel_simulator(
     window: int,
     historical_vol: Series,
     implied_vol: Series,
+    vol_threshold: float,
 ) -> tuple[list, TS, list]:
 
     # Results Initialization
@@ -116,39 +120,54 @@ def kandel_simulator(
     (quote, base), order_book = kandel_reset(
         quote, base, spot_price, price_grid, step_size, init=True
     )
+
     order_book_history.append(order_book)
 
     first_exit = True
+    open_price = spot_price
     for i in tqdm(range(window, ts.n_rows)):
         spot_price = ts.values[0][i]
 
-        if historical_vol.iloc[i] / implied_vol.iloc[i] > 0.5:
+        if historical_vol.iloc[i] > vol_threshold:
             if first_exit:
-                quote = (quote + base * spot_price) / 2
-                base = quote / spot_price
+                open_close_ratio = 1 - open_price / spot_price
+                if open_close_ratio > 0.015:
+                    new_quote = (quote + base * spot_price) * 0.25
+                    new_base = (quote / spot_price + base) * 0.75
+                    quote = new_quote
+                    base = new_base
+                elif open_close_ratio < -0.015:
+                    new_quote = (quote + base * spot_price) * 0.75
+                    new_base = (quote / spot_price + base) * 0.25
+                    quote = new_quote
+                    base = new_base
+                else:
+                    quote = (quote + base * spot_price) * 0.5
+                    base = quote / spot_price
+
                 first_exit = False
             order_book = OrderBook()
             order_book_history.append(OrderBook())
             transactions = []
             tot_transactions.append([])
-
         else:
             first_exit = True
-            transactions, order_book = arbitrage_order_book(
-                price=spot_price, order_book=order_book.copy()
-            )
-            tot_transactions.append(transactions)
+            if order_book.asks or order_book.bids:
+                transactions, order_book = arbitrage_order_book(
+                    price=spot_price, order_book=order_book.copy()
+                )
+                tot_transactions.append(transactions)
+                (quote, base), order_book = kandel_reset(
+                    quote,
+                    base,
+                    spot_price,
+                    price_grid,
+                    step_size,
+                    transactions,
+                    order_book.copy(),
+                    init=False,
+                )
 
-            (quote, base), order_book = kandel_reset(
-                quote,
-                base,
-                spot_price,
-                price_grid,
-                step_size,
-                transactions,
-                order_book.copy(),
-                init=False,
-            )
             order_book_history.append(order_book)
 
             if i % window == 0:
@@ -169,6 +188,7 @@ def kandel_simulator(
                     order_book=OrderBook(),
                     init=True,
                 )
+                open_price = spot_price
 
         quotes[i] = quote
         bases[i] = base

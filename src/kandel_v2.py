@@ -1,8 +1,8 @@
-import numpy as np
-from typing import TypedDict
 from sortedcontainers import SortedList
+from typing import TypedDict
+import numpy as np
 
-from src.order_book import OrderBook, build_book, add_limit_order
+from src.order_book import build_book, add_limit_order
 from src.order import Order
 
 
@@ -57,11 +57,31 @@ class Kandel:
             The order book.
 
     Methods:
-        _compute_price_grid(self) -> list[float]:
-            Compute the geometrical price grid for orders distribution.
+        _update_price_grid(self) -> None:
+            Update the geometrical price grid for orders distribution.
+        rebalance(self) -> None:
+            Rebalance the order book on the current spot price.
+        update_spot_and_vol(self, spot_price: float, vol: float) -> None:
+            Update the Kandel strategy with new spot price and volatility.
+        _place_dual_offers(self, transactions: list[Order]) -> None:
+            Place dual offers on the order book.
+        arbitrate_order_book(self) -> list[Order]:
+            Arbitrate the order book based on the current spot price.
     """
 
     def __init__(self, config: KandelConfig, spot_price: float, vol: float) -> None:
+        """
+        Initialize the Kandel strategy.
+
+        Args:
+            config (KandelConfig):
+                The configuration for the Kandel strategy.
+            spot_price (float):
+                The current spot price.
+            vol (float):
+                The volatility on past window.
+        """
+
         self.config = config
         self.spot_price = spot_price
         self.vol = vol
@@ -75,16 +95,9 @@ class Kandel:
             initial_price=spot_price,
         )
 
-    def _update_price_grid(self) -> list[float]:
+    def _update_price_grid(self) -> None:
         """
-        Compute the geometrical price grid for orders distribution.
-
-        Args:
-            vol (float):
-                The volatility.
-
-        Returns:
-            List of floats representing the price grid.
+        Compute the geometrical price grid for orders distribution based on the current spot price, vol and config.
         """
         range_multiplier = np.exp(self.config["vol_mult"] * self.vol)
         gridstep = range_multiplier ** (1 / self.config["n_points"])
@@ -99,16 +112,19 @@ class Kandel:
 
     def rebalance(self) -> None:
         """
-        Rebalance the Kandel orderbook.
+        Rebalance the orderbook on the current spot price.
         """
         self._update_price_grid()
+        capital = self.quote + self.base * self.spot_price
         self.order_book = build_book(
-            capital=self.quote + self.base * self.spot_price,
+            capital=capital,
             price_grid=self.price_grid,
             initial_price=self.spot_price,
         )
+        self.quote = capital / 2
+        self.base = self.quote / self.spot_price
 
-    def update(self, spot_price: float, vol: float) -> None:
+    def update_spot_and_vol(self, spot_price: float, vol: float) -> None:
         """
         Update the Kandel strategy with new spot price and volatility.
 
@@ -121,12 +137,12 @@ class Kandel:
         self.spot_price = spot_price
         self.vol = vol
 
-    def place_dual_offers(self, transactions: list[Order]) -> None:
+    def _place_dual_offers(self, transactions: list[Order]) -> None:
         """
         Place dual offers on the order book.
 
         Args:
-            transactions (List[Order]):
+            transactions (list[Order]):
                 The executed transactions from arbitrage.
         """
         bids_map = {
@@ -158,12 +174,12 @@ class Kandel:
                 )
                 self.order_book = add_limit_order(new_order, self.order_book)
 
-    def arbitrate_orderbook(self) -> None:
+    def arbitrate_order_book(self) -> list[Order]:
         """
-        Arbitrate the orderbook base on the current price.
+        Arbitrate the order book based on the current spot price.
 
         Returns:
-            List of transactions.
+            List of transactions executed.
         """
         transactions = []
 
@@ -196,4 +212,6 @@ class Kandel:
             )
 
         if transactions:
-            self.place_dual_offers(transactions)
+            self._place_dual_offers(transactions)
+
+        return transactions

@@ -73,7 +73,9 @@ class KandelBacktester:
         """
 
         self.prices = prices
-        self.kandel = Kandel(config, prices.iloc[0], window_vol.iloc[0])
+        self.kandel = Kandel(
+            config, prices.iloc[0], window_vol.iloc[0], exit_vol.iloc[0]
+        )
         self.window_vol = window_vol
         self.exit_vol = exit_vol
 
@@ -91,8 +93,14 @@ class KandelBacktester:
             loading_bar.update(1)
 
             self.kandel.update_spot_and_vol(price, self.window_vol.iloc[i])
-            transactions = self.kandel.arbitrate_order_book()
-            if i % self.kandel.config["window"] == 0:
+            if self.kandel.is_active:
+                transactions = self.kandel.arbitrate_order_book()
+                if self.kandel.should_exit(self.exit_vol.iloc[i]):
+                    self.kandel.exit()
+
+            if i % self.kandel.config["window"] == 0 and not self.kandel.should_exit(
+                self.exit_vol.iloc[i]
+            ):
                 self.kandel.rebalance()
 
             yield KandelState(

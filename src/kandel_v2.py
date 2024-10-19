@@ -2,7 +2,7 @@ from sortedcontainers import SortedList
 from typing import TypedDict
 import numpy as np
 
-from src.order_book import build_book, add_limit_order
+from src.order_book import OrderBook, build_book, add_limit_order
 from src.order import Order
 
 
@@ -25,6 +25,8 @@ class KandelConfig(TypedDict):
             The time window to rebalance strategy, will also compute the volatility for the range on it.
         vol_threshold (float):
             The volatility threshold.
+        asymmetric_exit_threshold (float):
+            The threshold at which the strategy will not exit in 50/50.
     """
 
     initial_base: float
@@ -34,6 +36,7 @@ class KandelConfig(TypedDict):
     step_size: int
     window: int
     vol_threshold: float
+    asymmetric_exit_threshold: float
 
 
 class Kandel:
@@ -45,6 +48,8 @@ class Kandel:
             The configuration for the Kandel strategy.
         spot_price (float):
             The current spot price.
+        open_price (float):
+            The spot price at the beginning of the current position.
         vol (float):
             The volatility on past window.
         base (float):
@@ -55,12 +60,18 @@ class Kandel:
             The price grid.
         order_book (OrderBook):
             The order book.
+        is_active (bool):
+            The flag to check if the strategy is active.
 
     Methods:
         _update_price_grid(self) -> None:
             Update the geometrical price grid for orders distribution.
         rebalance(self) -> None:
             Rebalance the order book on the current spot price.
+        exit(self) -> None:
+            Exit the Kandel strategy.
+        should_exit(self, exit_vol: float) -> bool:
+            Check if the strategy should exit based on the volatility
         update_spot_and_vol(self, spot_price: float, vol: float) -> None:
             Update the Kandel strategy with new spot price and volatility.
         _place_dual_offers(self, transactions: list[Order]) -> None:
@@ -69,7 +80,9 @@ class Kandel:
             Arbitrate the order book based on the current spot price.
     """
 
-    def __init__(self, config: KandelConfig, spot_price: float, vol: float) -> None:
+    def __init__(
+        self, config: KandelConfig, spot_price: float, vol: float, exit_vol: float
+    ) -> None:
         """
         Initialize the Kandel strategy.
 
@@ -80,10 +93,13 @@ class Kandel:
                 The current spot price.
             vol (float):
                 The volatility on past window.
+            exit_vol (float):
+                The volatility for the exit strategy.
         """
 
         self.config = config
         self.spot_price = spot_price
+        self.open_price = spot_price
         self.vol = vol
         self.base = config["initial_base"]
         self.quote = config["initial_quote"]
@@ -94,6 +110,9 @@ class Kandel:
             price_grid=self.price_grid,
             initial_price=spot_price,
         )
+        self.is_active = True
+        if self.should_exit(exit_vol):
+            self.exit()
 
     def _update_price_grid(self) -> None:
         """
@@ -123,6 +142,37 @@ class Kandel:
         )
         self.quote = capital / 2
         self.base = self.quote / self.spot_price
+        self.open_price = self.spot_price
+
+        self.is_active = True
+
+    def exit(self) -> None:
+        """
+        Exit the Kandel strategy.
+        """
+        open_close_ratio = self.spot_price / self.open_price - 1
+        if open_close_ratio > self.config["asymmetric_exit_threshold"]:
+            self.quote = (self.quote + self.base * self.spot_price) * 0.25
+            self.base = (self.quote * 3) / self.spot_price
+        elif open_close_ratio < -self.config["asymmetric_exit_threshold"]:
+            self.quote = (self.quote + self.base * self.spot_price) * 0.75
+            self.base = (self.quote / 3) / self.spot_price
+        else:
+            self.quote = (self.quote + self.base * self.spot_price) / 2
+            self.base = self.quote / self.spot_price
+
+        self.order_book = OrderBook()
+        self.is_active = False
+
+    def should_exit(self, exit_vol: float) -> bool:
+        """
+        Check if the strategy should exit based on the volatility.
+
+        Args:
+            exit_vol (float):
+                The volatility for the exit strategy.
+        """
+        return exit_vol > self.config["vol_threshold"]
 
     def update_spot_and_vol(self, spot_price: float, vol: float) -> None:
         """
@@ -179,7 +229,7 @@ class Kandel:
         Arbitrate the order book based on the current spot price.
 
         Returns:
-            List of transactions executed.
+            list[Order]: List of transactions executed.
         """
         transactions = []
 

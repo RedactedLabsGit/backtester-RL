@@ -17,11 +17,14 @@
     "step_size": 1,
     
     "_doc_vol_threshold": "- if the vol is above this value, the position will be exited.",
-    "vol_threshold": 19,
+    "vol_threshold": 0.0185,
     
     "_doc_vol_threshold_window": "- time window in hours to compute the vol threshold from.",
     "vol_threshold_window": 12,
-    
-    "_doc_samples_length": "SAMPLES ONLY - the period of one sample in days (excluding window).",
+
+    "_doc_asymmetric_exit_threshold": "- if the open/close price ratio is bigger than the ratio, the position will exit with a 75/25 ratio instead of 50/50.",
+    "asymmetric_exit_threshold": 0.015,
+
+    "_doc_samples_length": "MULTI SAMPLES ONLY - the period of one sample in days (excluding window).",
     "samples_length": 3
 }

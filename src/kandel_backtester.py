@@ -93,6 +93,7 @@ class KandelBacktester:
             loading_bar.update(1)
 
             self.kandel.update_spot_and_vol(price, self.window_vol.iloc[i])
+            transactions = []
             if self.kandel.is_active:
                 transactions = self.kandel.arbitrate_order_book()
                 if self.kandel.should_exit(self.exit_vol.iloc[i]):

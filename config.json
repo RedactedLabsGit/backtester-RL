@@ -17,7 +17,7 @@
     "step_size": 1,
     
     "_doc_vol_threshold": "- if the vol is above this value, the position will be exited.",
-    "vol_threshold": 0.0185,
+    "vol_threshold": 0.0175,
     
     "_doc_vol_threshold_window": "- time window in hours to compute the vol threshold from.",
     "vol_threshold_window": 12,

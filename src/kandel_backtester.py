@@ -1,5 +1,5 @@
-from pandas import Series, DataFrame
 from typing import TypedDict, Generator
+from pandas import Series, DataFrame
 from tqdm import tqdm
 import numpy as np
 
@@ -92,8 +92,10 @@ class KandelBacktester:
         for i, price in enumerate(self.prices):
             loading_bar.update(1)
 
-            self.kandel.update_spot_and_vol(price, self.window_vol.iloc[i])
             transactions = []
+            generated_fees = 0
+
+            self.kandel.update_spot_and_vol(price, self.window_vol.iloc[i])
             if self.kandel.is_active:
                 transactions = self.kandel.arbitrate_order_book()
                 if self.kandel.should_exit(self.exit_vol.iloc[i]):
@@ -102,13 +104,14 @@ class KandelBacktester:
             if i % self.kandel.config["window"] == 0 and not self.kandel.should_exit(
                 self.exit_vol.iloc[i]
             ):
-                self.kandel.rebalance()
+                generated_fees = self.kandel.rebalance()
 
             yield KandelState(
                 base=self.kandel.base,
                 quote=self.kandel.quote,
                 order_book=self.kandel.order_book,
                 transactions=transactions,
+                generated_fees=generated_fees,
             )
 
     def run(self) -> tuple[DataFrame, list[OrderBook], list[list[Order]]]:
@@ -126,6 +129,7 @@ class KandelBacktester:
         bases = np.zeros(len(self.prices))
         order_book_history = np.empty(len(self.prices), dtype=OrderBook)
         transaction_history = []
+        generated_fees = np.zeros(len(self.prices))
 
         loading_bar = tqdm(total=len(self.prices))
 
@@ -134,11 +138,13 @@ class KandelBacktester:
             bases[i] = state["base"]
             order_book_history[i] = state["order_book"]
             transaction_history.append(state["transactions"])
+            generated_fees[i] = state["generated_fees"]
 
         res = DataFrame(
             {
                 "quote": quotes,
                 "base": bases,
+                "generated_fees": generated_fees,
             }
         )
 

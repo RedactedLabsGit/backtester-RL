@@ -48,14 +48,16 @@ class Kandel:
             The configuration for the Kandel strategy.
         spot_price (float):
             The current spot price.
-        open_price (float):
-            The spot price at the beginning of the current position.
-        vol (float):
-            The volatility on past window.
         base (float):
             The base size.
         quote (float):
             The quote size.
+        open_price (float):
+            The spot price at the beginning of the current position.
+        open_capital (float):
+            The capital at the beginning of the current position.
+        vol (float):
+            The volatility on past window.
         price_grid (list[float]):
             The price grid.
         order_book (OrderBook):
@@ -66,7 +68,7 @@ class Kandel:
     Methods:
         _update_price_grid(self) -> None:
             Update the geometrical price grid for orders distribution.
-        rebalance(self) -> None:
+        rebalance(self) -> float:
             Rebalance the order book on the current spot price.
         exit(self) -> None:
             Exit the Kandel strategy.
@@ -99,10 +101,13 @@ class Kandel:
 
         self.config = config
         self.spot_price = spot_price
-        self.open_price = spot_price
-        self.vol = vol
         self.base = config["initial_base"]
         self.quote = config["initial_quote"]
+        self.open_price = spot_price
+        self.open_capital = (
+            config["initial_base"] * spot_price + config["initial_quote"]
+        )
+        self.vol = vol
         self.price_grid = []
         self._update_price_grid()
         self.order_book = build_book(
@@ -129,12 +134,19 @@ class Kandel:
 
         self.price_grid = bids[::-1] + [self.spot_price] + asks
 
-    def rebalance(self) -> None:
+    def rebalance(self) -> float:
         """
         Rebalance the orderbook on the current spot price.
+
+        Returns:
+            float: The generated fees.
         """
         self._update_price_grid()
         capital = self.quote + self.base * self.spot_price
+        generated_fees = (
+            (capital - self.open_capital) * 0.1 if capital > self.open_capital else 0
+        )
+        capital -= generated_fees
         self.order_book = build_book(
             capital=capital,
             price_grid=self.price_grid,
@@ -143,8 +155,11 @@ class Kandel:
         self.quote = capital / 2
         self.base = self.quote / self.spot_price
         self.open_price = self.spot_price
+        self.open_capital = capital
 
         self.is_active = True
+
+        return generated_fees
 
     def exit(self) -> None:
         """

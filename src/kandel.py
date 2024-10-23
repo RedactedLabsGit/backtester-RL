@@ -9,10 +9,8 @@ class KandelConfig(TypedDict):
     KandelConfig is used to store the configuration of the Kandel strategy.
 
     Attributes:
-        initial_base (float):
-            The initial base size.
-        initial_quote (float):
-            The initial quote size.
+        initial_capital (float):
+            The initial capital size.
         vol_mult (float):
             The volatility multiplier, used to make the position range dynamic.
         n_points (int):
@@ -21,19 +19,18 @@ class KandelConfig(TypedDict):
             The number of points that the kandel should skip when adding new order.
         window (int):
             The time window to rebalance strategy, will also compute the volatility for the range on it.
-        vol_threshold (float):
-            The volatility threshold.
+        exit_vol_threshold (float):
+            The exit volatility threshold.
         asymmetric_exit_threshold (float):
             The threshold at which the strategy will not exit in 50/50.
     """
 
-    initial_base: float
-    initial_quote: float
+    initial_capital: float
     vol_mult: float
     n_points: int
     step_size: int
     window: int
-    vol_threshold: float
+    exit_vol_threshold: float
     asymmetric_exit_threshold: float
 
 
@@ -99,12 +96,10 @@ class Kandel:
 
         self.config = config
         self.spot_price = spot_price
-        self.base = config["initial_base"]
-        self.quote = config["initial_quote"]
+        self.base = config["initial_capital"] / 2 / spot_price
+        self.quote = config["initial_capital"] / 2
         self.open_price = spot_price
-        self.open_capital = (
-            config["initial_base"] * spot_price + config["initial_quote"]
-        )
+        self.open_capital = config["initial_capital"]
         self.vol = vol
         self.price_grid = []
         self._update_price_grid()
@@ -112,7 +107,7 @@ class Kandel:
             initial_price=spot_price,
         )
         self.order_book.build_book(
-            capital=config["initial_quote"] + config["initial_base"] * spot_price,
+            capital=config["initial_capital"],
             price_grid=self.price_grid,
         )
         self.is_active = True
@@ -185,7 +180,7 @@ class Kandel:
             exit_vol (float):
                 The volatility for the exit strategy.
         """
-        return exit_vol > self.config["vol_threshold"]
+        return exit_vol > self.config["exit_vol_threshold"]
 
     def update_kandel_state(
         self, spot_price: float, window_vol: float, exit_vol: float

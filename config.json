@@ -1,34 +1,21 @@
 {
-    "_title": "Configuration file for both backtester (samples and long periods).",
-    "_sub_title_1": "BACKTESTER CONFIG",
-    "_doc_mode": "- 'MULTI' or 'ONE'",
-    "mode": "ONE",
+    "sample_mode": "single",
+    "data_path": "data/binance/ETHUSDC.csv",
+    "start_date": "2024-01-01",
+    "end_date": "2024-05-01",
+    "samples_length": 3,
+    "exit_vol_window": 12,
 
-    "_doc_position_history": "ONE SAMPLE - if true, the backtester will show a graph with the detailed position history.",
-    "position_history": false,
-
-    "_sub_title_2": "KANDEL CONFIG",
-    "_doc_window": "- time in hours before rebalancing, the vol is also computed on this time window.",
-    "window": 24,
-
-    "_doc_initial_capital": "- the initial size in {quote asset}, position will start in 50/50 ratio.",
-    "initial_capital": 1000000,
-    
-    "vol_mult": 1.645,
-    
-    "n_points": 10,
-    
-    "step_size": 1,
-    
-    "_doc_vol_threshold": "- if the vol is above this value, the position will be exited.",
-    "vol_threshold": 0.0175,
-    
-    "_doc_vol_threshold_window": "- time window in hours to compute the vol threshold from.",
-    "vol_threshold_window": 12,
-
-    "_doc_asymmetric_exit_threshold": "- if the open/close price ratio is bigger than the ratio, the position will exit with a 75/25 ratio instead of 50/50.",
-    "asymmetric_exit_threshold": 0.015,
-
-    "_doc_samples_length": "MULTI SAMPLES - the period of one sample in days (excluding window).",
-    "samples_length": 3
+    "backtester_config": {
+        "position_history": false
+    },
+    "kandel_config": {
+        "window": 24,
+        "initial_capital": 1000000,
+        "vol_mult": 1.645,
+        "n_points": 10,
+        "step_size": 1,
+        "exit_vol_threshold": 0.0175,
+        "asymmetric_exit_threshold": 0.015
+    }
 }

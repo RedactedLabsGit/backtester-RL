@@ -30,7 +30,7 @@ class KandelState(TypedDict):
     base: float
     quote: float
     order_book: OrderBook
-    transactions: list[Order]
+    generated_fees: float
 
 
 class KandelBacktester:
@@ -98,7 +98,6 @@ class KandelBacktester:
         for i, price in enumerate(self.prices):
             loading_bar.update(1)
 
-            transactions = []
             generated_fees = 0
 
             current_exit_vol = self.exit_vol.iloc[i]
@@ -115,11 +114,10 @@ class KandelBacktester:
                 base=self.kandel.base,
                 quote=self.kandel.quote,
                 order_book=self.kandel.order_book,
-                transactions=transactions,
                 generated_fees=generated_fees,
             )
 
-    def run(self) -> tuple[DataFrame, list[OrderBook], list[list[Order]]]:
+    def run(self) -> tuple[DataFrame, list[OrderBook]]:
         """
         Run the backtest for the Kandel strategy.
 
@@ -127,13 +125,11 @@ class KandelBacktester:
             tuple:
                 DataFrame: The results of the backtest.
                 list[OrderBook]: The order book history.
-                list[list[Order]]: The transactions history.
         """
 
         quotes = np.zeros(len(self.prices))
         bases = np.zeros(len(self.prices))
         order_book_history = np.empty(len(self.prices), dtype=OrderBook)
-        transaction_history = []
         generated_fees = np.zeros(len(self.prices))
 
         loading_bar = tqdm(total=len(self.prices))
@@ -141,7 +137,6 @@ class KandelBacktester:
         for i, state in enumerate(self._generate_kandel_states(loading_bar)):
             quotes[i] = state["quote"]
             bases[i] = state["base"]
-            transaction_history.append(state["transactions"])
             generated_fees[i] = state["generated_fees"]
             if self.config["position_history"]:
                 order_book_history[i] = state["order_book"].get_state()
@@ -154,4 +149,4 @@ class KandelBacktester:
             }
         )
 
-        return res, order_book_history, transaction_history
+        return res, order_book_history

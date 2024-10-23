@@ -1,206 +1,212 @@
-from typing import List, Tuple, Callable, Union
 import numpy as np
-from sortedcontainers import SortedList
-from tqdm import tqdm
-from pandas import Series
+from typing import TypedDict
 
-from src.time_series import TS, col_concat
-from src.order_book import (
-    Order,
-    OrderBook,
-    add_limit_order,
-    build_book,
-    arbitrage_order_book,
-)
-from src.fin_stats import vol_, log_ret_
-
-DECIMALS = 6
+from src.order_book import OrderBook
 
 
-def kandel_reset(
-    quote: float,
-    base: float,
-    price: float,
-    price_grid: np.array,
-    step_size: int,
-    transactions: List = [],
-    order_book: OrderBook = OrderBook(),
-    init: bool = False,
-) -> Tuple[Tuple[float, float], OrderBook]:
+class KandelConfig(TypedDict):
+    """
+    KandelConfig is used to store the configuration of the Kandel strategy.
 
-    if init:
-        order_book = build_book(
-            capital=quote + base * price, price_grid=price_grid, initial_price=price
+    Attributes:
+        initial_base (float):
+            The initial base size.
+        initial_quote (float):
+            The initial quote size.
+        vol_mult (float):
+            The volatility multiplier, used to make the position range dynamic.
+        n_points (int):
+            The number of bids and asks on each side of the price.
+        step_size (int):
+            The number of points that the kandel should skip when adding new order.
+        window (int):
+            The time window to rebalance strategy, will also compute the volatility for the range on it.
+        vol_threshold (float):
+            The volatility threshold.
+        asymmetric_exit_threshold (float):
+            The threshold at which the strategy will not exit in 50/50.
+    """
+
+    initial_base: float
+    initial_quote: float
+    vol_mult: float
+    n_points: int
+    step_size: int
+    window: int
+    vol_threshold: float
+    asymmetric_exit_threshold: float
+
+
+class Kandel:
+    """
+    Kandel is an implementation of a Kandel strategy.
+
+    Attributes:
+        config (KandelConfig):
+            The configuration for the Kandel strategy.
+        spot_price (float):
+            The current spot price.
+        base (float):
+            The base size.
+        quote (float):
+            The quote size.
+        open_price (float):
+            The spot price at the beginning of the current position.
+        open_capital (float):
+            The capital at the beginning of the current position.
+        vol (float):
+            The volatility on past window.
+        price_grid (list[float]):
+            The price grid.
+        order_book (OrderBook):
+            The order book.
+        is_active (bool):
+            The flag to check if the strategy is active.
+
+    Methods:
+        _update_price_grid(self) -> None:
+            Update the geometrical price grid for orders distribution.
+        rebalance(self) -> float:
+            Rebalance the order book on the current spot price.
+        exit(self) -> None:
+            Exit the Kandel strategy.
+        should_exit(self, exit_vol: float) -> bool:
+            Check if the strategy should exit based on the volatility
+        update_spot_and_vol(self, spot_price: float, vol: float) -> None:
+            Update the Kandel strategy with new spot price and volatility.
+        _place_dual_offers(self, transactions: list[Order]) -> None:
+            Place dual offers on the order book.
+        arbitrate_order_book(self) -> list[Order]:
+            Arbitrate the order book based on the current spot price.
+    """
+
+    def __init__(
+        self, config: KandelConfig, spot_price: float, vol: float, exit_vol: float
+    ) -> None:
+        """
+        Initialize the Kandel strategy.
+
+        Args:
+            config (KandelConfig):
+                The configuration for the Kandel strategy.
+            spot_price (float):
+                The current spot price.
+            vol (float):
+                The volatility on past window.
+            exit_vol (float):
+                The volatility for the exit strategy.
+        """
+
+        self.config = config
+        self.spot_price = spot_price
+        self.base = config["initial_base"]
+        self.quote = config["initial_quote"]
+        self.open_price = spot_price
+        self.open_capital = (
+            config["initial_base"] * spot_price + config["initial_quote"]
         )
-        if base == 0:
-            quote /= 2
-            base = quote / price
+        self.vol = vol
+        self.price_grid = []
+        self._update_price_grid()
+        self.order_book = OrderBook(
+            initial_price=spot_price,
+        )
+        self.order_book.build_book(
+            capital=config["initial_quote"] + config["initial_base"] * spot_price,
+            price_grid=self.price_grid,
+        )
+        self.is_active = True
+        if self.should_exit(exit_vol):
+            self.exit()
 
-        return ((quote, base), order_book)
+    def _update_price_grid(self) -> None:
+        """
+        Compute the geometrical price grid for orders distribution based on the current spot price, vol and config.
+        """
+        range_multiplier = np.exp(self.config["vol_mult"] * self.vol)
+        gridstep = range_multiplier ** (1 / self.config["n_points"])
+        bids = [
+            self.spot_price / gridstep**i for i in range(1, self.config["n_points"] + 1)
+        ]
+        asks = [
+            self.spot_price * gridstep**i for i in range(1, self.config["n_points"] + 1)
+        ]
 
-    if not transactions:
-        # If nothing happened and not initialization the do nothing return order book
-        return ((quote, base), order_book)
+        self.price_grid = bids[::-1] + [self.spot_price] + asks
 
-    bids_map = {
-        round(price, DECIMALS): round(price_grid[i + step_size], DECIMALS)
-        for i, price in enumerate(price_grid[:(-step_size)])
-    }
-    asks_map = {
-        round(price, DECIMALS): round(price_grid[i - step_size], DECIMALS)
-        for i, price in enumerate(price_grid[step_size:], start=step_size)
-    }
+    def rebalance(self) -> float:
+        """
+        Rebalance the orderbook on the current spot price.
 
-    # Update quote and base amounts and update order_book
-    for transaction in transactions:
-        side = transaction.order_type
-        if side == "bid":
-            # I bought
-            quote -= transaction.price * transaction.qty
-            base += transaction.qty
-            new_order = Order("ask", transaction.qty, bids_map[transaction.price])
-            order_book = add_limit_order(new_order, order_book)
-        if side == "ask":
-            # I sold
-            quote = quote + (transaction.price * transaction.qty)
-            base = base - transaction.qty
-            new_order = Order(
-                "bid",
-                transaction.qty * transaction.price / asks_map[transaction.price],
-                asks_map[transaction.price],
-            )
-            order_book = add_limit_order(new_order, order_book)
+        Returns:
+            float: The generated fees.
+        """
+        self._update_price_grid()
+        capital = self.quote + self.base * self.spot_price
+        generated_fees = (
+            (capital - self.open_capital) * 0.1 if capital > self.open_capital else 0
+        )
+        capital -= generated_fees
 
-    return (quote, base), order_book
+        self.order_book.build_book(capital=capital, price_grid=self.price_grid)
 
+        self.quote = capital / 2
+        self.base = self.quote / self.spot_price
+        self.open_price = self.spot_price
+        self.open_capital = capital
 
-def geom_price_grid(
-    ts: TS, spot_price: float, vol_mult: float = 1.645, n_points: int = 10
-) -> list:
+        self.is_active = True
 
-    # Take a one day window to calculate the volatility
-    sig = vol_(log_ret_(ts[-24 * 3600 :])) / np.sqrt(365)
-    range_multiplier = np.exp(vol_mult * sig)
-    gridstep = range_multiplier ** (1 / n_points)
-    bids = [spot_price / gridstep**i for i in range(1, n_points + 1)]
-    asks = [spot_price * gridstep**i for i in range(1, n_points + 1)]
+        return generated_fees
 
-    return bids[::-1] + [spot_price] + asks
-
-
-def kandel_simulator(
-    ts: Union[TS, List[str]],
-    quote: float,
-    base: float,
-    vol_mult: float,
-    n_points: int,
-    step_size: int,
-    window: int,
-    historical_vol: Series,
-    vol_threshold: float,
-) -> tuple[list, TS, list]:
-
-    # Results Initialization
-    quotes = np.zeros(ts.n_rows)
-    bases = np.zeros(ts.n_rows)
-    volume = np.zeros(ts.n_rows)
-
-    tot_transactions = []
-    order_book_history = []
-    spot_price = ts.values[0][window]
-
-    base = base / spot_price
-    quotes[: (1 if window == 0 else window + 1)] = quote
-    bases[: (1 if window == 0 else window + 1)] = base
-    volume[: (1 if window == 0 else window + 1)] = 0
-
-    price_grid = geom_price_grid(ts[:window], spot_price, vol_mult, n_points)
-
-    (quote, base), order_book = kandel_reset(
-        quote, base, spot_price, price_grid, step_size, init=True
-    )
-
-    order_book_history.append(order_book)
-
-    first_exit = True
-    open_price = spot_price
-    for i in tqdm(range(window, ts.n_rows)):
-        spot_price = ts.values[0][i]
-
-        if historical_vol.iloc[i] > vol_threshold:
-            if first_exit:
-                open_close_ratio = 1 - open_price / spot_price
-                if open_close_ratio > 0.015:
-                    new_quote = (quote + base * spot_price) * 0.25
-                    new_base = (quote / spot_price + base) * 0.75
-                    quote = new_quote
-                    base = new_base
-                elif open_close_ratio < -0.015:
-                    new_quote = (quote + base * spot_price) * 0.75
-                    new_base = (quote / spot_price + base) * 0.25
-                    quote = new_quote
-                    base = new_base
-                else:
-                    quote = (quote + base * spot_price) * 0.5
-                    base = quote / spot_price
-
-                first_exit = False
-            order_book = OrderBook()
-            order_book_history.append(OrderBook())
-            transactions = []
-            tot_transactions.append([])
+    def exit(self) -> None:
+        """
+        Exit the Kandel strategy.
+        """
+        open_close_ratio = self.spot_price / self.open_price - 1
+        if open_close_ratio > self.config["asymmetric_exit_threshold"]:
+            self.quote = (self.quote + self.base * self.spot_price) * 0.25
+            self.base = (self.quote * 3) / self.spot_price
+        elif open_close_ratio < -self.config["asymmetric_exit_threshold"]:
+            self.quote = (self.quote + self.base * self.spot_price) * 0.75
+            self.base = (self.quote / 3) / self.spot_price
         else:
-            first_exit = True
-            if order_book.asks or order_book.bids:
-                transactions, order_book = arbitrage_order_book(
-                    price=spot_price, order_book=order_book.copy()
+            self.quote = (self.quote + self.base * self.spot_price) / 2
+            self.base = self.quote / self.spot_price
+
+        self.order_book.build_book(capital=0, price_grid=[])
+        self.is_active = False
+
+    def should_exit(self, exit_vol: float) -> bool:
+        """
+        Check if the strategy should exit based on the volatility.
+
+        Args:
+            exit_vol (float):
+                The volatility for the exit strategy.
+        """
+        return exit_vol > self.config["vol_threshold"]
+
+    def update_kandel_state(
+        self, spot_price: float, window_vol: float, exit_vol: float
+    ) -> None:
+        """
+
+
+        Args:
+            spot_price (float):
+                The new spot price.
+        """
+        self.spot_price = spot_price
+        self.vol = window_vol
+
+        if self.is_active:
+            transactions = self.order_book.arbitrate(self.spot_price)
+            if transactions:
+                quote_change, base_change = self.order_book.place_dual_offers(
+                    transactions
                 )
-                tot_transactions.append(transactions)
-                (quote, base), order_book = kandel_reset(
-                    quote,
-                    base,
-                    spot_price,
-                    price_grid,
-                    step_size,
-                    transactions,
-                    order_book.copy(),
-                    init=False,
-                )
-
-            order_book_history.append(order_book)
-
-            if i % window == 0:
-                price_grid = geom_price_grid(
-                    ts[i - window : i], spot_price, vol_mult, n_points
-                )
-
-                # Sell all base before rebalancing
-                quote = quote + base * spot_price
-                base = 0
-                (quote, base), order_book = kandel_reset(
-                    quote,
-                    base,
-                    spot_price,
-                    price_grid,
-                    step_size,
-                    transactions=[],
-                    order_book=OrderBook(),
-                    init=True,
-                )
-                open_price = spot_price
-
-        quotes[i] = quote
-        bases[i] = base
-        volume[i] = sum([t.price * t.qty for t in transactions])
-
-    mtm = quotes + bases * ts.values[0]
-
-    res = TS(
-        row_names=ts.row_names,
-        unit=ts.unit,
-        n_rows=ts.n_rows,
-        col_names=["quote", "base", "mtm", "volume"],
-        values=np.array((quotes, bases, mtm, volume)),
-    )
-    res = col_concat(ts, res)
-    return tot_transactions, res, order_book_history
+                self.quote += quote_change
+                self.base += base_change
+            if self.should_exit(exit_vol):
+                self.exit()

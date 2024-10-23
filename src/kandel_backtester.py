@@ -1,11 +1,11 @@
-from typing import TypedDict, Generator
-from pandas import Series, DataFrame
-from tqdm import tqdm
 import numpy as np
+from tqdm import tqdm
+from pandas import Series, DataFrame
+from typing import TypedDict, Generator
 
-from src.kandel_v2 import KandelConfig, Kandel
-from src.order_book import OrderBook
 from src.order import Order
+from src.order_book import OrderBook
+from src.kandel import KandelConfig, Kandel
 
 
 class KandelBacktesterConfig(TypedDict):

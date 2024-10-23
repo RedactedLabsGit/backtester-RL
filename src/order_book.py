@@ -1,49 +1,27 @@
-import uuid
-from math import isclose
-from sortedcontainers import SortedList
 import numpy as np
-import pandas as pd
-from typing import Tuple, List
-import copy
 from tabulate import tabulate
 from termcolor import colored
 
 
-from src.order import Order
-from src.utils_inventory import initial_inventory_allocation
-from src.utils_grid import cursor
-
-
-TOLERANCE = 1e-7
-DECIMALS = 6
+from src.order import Order, OrderType
 
 
 class OrderBook:
-    bids: SortedList
-    asks: SortedList
+    price_grid: list[float]
 
-    def __init__(
-        self, bids: SortedList = SortedList(), asks: SortedList = SortedList()
-    ) -> None:
-        self.bids = bids
-        self.asks = asks
+    def __init__(self, initial_price: float) -> None:
+        self.orders = np.array([])
+        self.current_price = initial_price
 
     def __repr__(self):
         return str(self)
 
     def __str__(self):
-        # Combine bids and asks into a single list
-        orders = sorted(self.asks + self.bids, key=lambda x: x.price, reverse=True)
-
-        # Initialize table data
         table_data = []
-
-        # Format each order and add to table data
-        for i, order in enumerate(orders):
+        for i, order in enumerate(self.orders[::-1]):
             qty = order.qty
             price = order.price
-            total = qty
-            side_color = "green" if order.order_type == "bid" else "red"
+            side_color = "green" if order.order_type == OrderType.BID else "red"
             table_data.append(
                 [
                     i,
@@ -53,280 +31,146 @@ class OrderBook:
                 ]
             )
 
-        # Print the table with color
         headers = ["Index", "Size", "Price", "Total"]
         table = tabulate(table_data, headers=headers, tablefmt="simple_outline")
 
         return table
 
-    def to_pandas(self):
-        orders = sorted(self.bids + self.asks, key=lambda x: x.price)
-
-        # Initialize table data
-        return pd.DataFrame(
-            [(o.order_type, o.qty, o.price, o.qty * o.price) for o in orders],
-            columns=["Side", "Size", "Price", "Total"],
-        ).sort_values(["Side", "Price"], ascending=(True, False))
-
-    def to_dict(self):
-        if not self.bids and not self.asks:
-            return {"bids": [], "asks": []}
-        if not self.bids:
-            return {
-                "bids": [],
-                "asks": [a.price for a in self.asks],
-            }
-        if not self.asks:
-            return {
-                "bids": [b.price for b in self.bids],
-                "asks": [],
-            }
+    def to_dict(self) -> dict:
         return {
-            "bids": [b.price for b in self.bids],
-            "asks": [a.price for a in self.asks],
+            "bids": [
+                order.price
+                for order in self.orders
+                if order.order_type == OrderType.BID
+            ],
+            "asks": [
+                order.price
+                for order in self.orders
+                if order.order_type == OrderType.ASK
+            ],
         }
 
-    def copy(self):
-        return OrderBook(self.bids, self.asks)
+    def get_state(self):
+        return self.to_dict()
 
-    def get_prices(self) -> List[float]:
-        if not self.asks:
-            return [i.price for i in self.bids]
-        if not self.bids:
-            return [i.price for i in self.asks]
-        return [i.price for i in self.bids.update(self.asks)]
+    def build_book(self, capital: float, price_grid: list[float]) -> None:
+        self.price_grid = price_grid
 
-    def get_orders(self) -> SortedList:
-        if not self.asks:
-            return [i for i in self.bids]
-        if not self.bids:
-            return [i for i in self.asks]
-        return [i for i in self.bids.update(self.asks)]
+        if len(price_grid) == 0:
+            self.orders = np.array([])
+            return
 
+        nb_price_points = len(price_grid) - 1
+        self.orders = np.empty(nb_price_points, dtype=Order)
 
-def add_limit_order(order: Order, order_book: OrderBook) -> OrderBook:
-
-    bids = (
-        copy.deepcopy(order_book.bids)
-        if (order_book and order_book.bids)
-        else SortedList()
-    )
-    asks = (
-        copy.deepcopy(order_book.asks)
-        if (order_book and order_book.asks)
-        else SortedList()
-    )
-
-    res = OrderBook(bids, asks)
-    order.price = round(order.price, DECIMALS)
-    order.qty = round(order.qty, DECIMALS)
-
-    if order.order_type == "bid":
-        try:
-            idx_bid = next(
-                (i for i, o in enumerate(bids) if order.price == o.price), None
-            )
-
-        except StopIteration:
-            # Need to check if bid I'm inserting crosses best ask
-            if asks:
-                if order.price >= asks[0].price and order.price < TOLERANCE:
-                    raise ("bid order crosses best ask, not possible")
-            idx_bid = None
-
-        if idx_bid is not None:
-            res.bids[idx_bid].qty += round(order.qty, DECIMALS)
-        else:
-            bids.add(order)
-
-    elif order.order_type == "ask":
-        try:
-            idx_ask = next(
-                (i for i, o in enumerate(asks) if order.price == o.price), None
-            )
-        except StopIteration:
-            if bids:
-                if order.price <= bids[0].price and order.price < TOLERANCE:
-                    raise ("bid order crosses best ask, not possible")
-            idx_ask = None
-
-        if idx_ask is not None:
-            res.asks[idx_ask].qty += round(order.qty, DECIMALS)
-        else:
-            asks.add(order)
-    else:
-        raise ("order_type not recognized")
-
-    return res
-
-
-def execute_market_order(
-    price: float, qty: float, order_book: OrderBook
-) -> Tuple[List[Order], OrderBook]:
-    """
-    Market order needs to buy/sell all up to the price in the order or to qty executed
-    returns ([(price, qty) for each executed order], new_order_book)
-    """
-
-    to_trade = qty
-    trades = []
-    bids = order_book.bids.copy() if (order_book and order_book.bids) else SortedList()
-    asks = order_book.asks.copy() if (order_book and order_book.asks) else SortedList()
-    # if bids
-    if len(bids) > 0:
-        # if price greater than best bid nothind
-        if price > bids[0].price:
-            pass
-        else:
-            bid = bids[0]
-            while bid and price <= bid.price and to_trade > TOLERANCE:
-                # If not enough then all order is executed
-                if to_trade >= bid.qty:
-                    executed_order = bids.pop(0)
-                    executed_order = (executed_order.price, executed_order.qty)
-                    to_trade -= executed_order[1]
-                else:
-                    # If enough then to_trade is qty at this price
-                    executed_order = Order("bid", bid.price, to_trade)
-                    bids[0].qty -= to_trade
-                    to_trade = 0
-
-                bid = bids[0] if len(bids) > 0 else None
-                trades.append(executed_order)
-    if len(asks) > 0:
-        # if price greater than best bid nothind
-        if price < asks[0].price:
-            pass
-        else:
-            ask = asks[0]
-            while ask and price >= asks[0].price and to_trade > TOLERANCE:
-                # If not enough then all order is executed
-                if to_trade >= ask.qty:
-                    executed_order = asks.pop(0)
-                    executed_order = (executed_order.price, executed_order.qty)
-                    to_trade -= executed_order[1]
-                else:
-                    # If enough then to_trade is qty at this price
-                    executed_order = Order("ask", ask.price, to_trade)
-                    asks[0].qty -= to_trade
-                    to_trade = 0
-
-                ask = asks[0] if len(asks) > 0 else None
-                trades.append(executed_order)
-
-    return (trades, (bids, asks))
-
-
-def arbitrage_order_book(
-    price: float, order_book: OrderBook
-) -> Tuple[List[Order], OrderBook]:
-    """
-    Function in charge of arbitraging order_book based on price
-    Pops all asks or bids up until to price
-    returns (transactions, order_book)
-    """
-    transactions = []
-
-    if order_book.bids:
-        transactions.extend(order for order in order_book.bids if price <= order.price)
-        order_book.bids = SortedList(
-            [order for order in order_book.bids if price > order.price]
-        )
-
-    if order_book.asks:
-        transactions.extend(order for order in order_book.asks if price >= order.price)
-        order_book.asks = SortedList(
-            [order for order in order_book.asks if price < order.price]
-        )
-
-    return transactions, order_book
-
-
-def build_book(capital: float, price_grid: List, initial_price: float) -> OrderBook:
-    """
-    Function that inits our book of orders when the strategy is inited
-
-    Args:
-        capital (int, optional): capital in stable. Defaults to 1.
-        price_grid (list, optional): Offers price grid. Defaults to [1000,5000].
-        initial_price (int, optional): Current price at initialisation. Defaults to 1000.
-
-    Raises:
-        Exception: Capital positivity constraint
-        Exception: Price grid min two points constraint
-        Exception: Current Price positivity
-        Exception: Initial Positivity constraint
-
-    Returns:
-        Tuple: Return a tuple (bids, asks)
-    """
-    nb_price_points = len(price_grid)
-
-    if capital <= 0:
-        raise Exception("Capital must be positive.")
-
-    if nb_price_points < 2:
-        raise Exception("Price grid must contains at least two points.")
-
-    if initial_price <= 0:
-        raise Exception("Current price need to be superior to 0")
-
-    initial_capital_A, initial_capital_B = initial_inventory_allocation(
-        initial_price, price_grid[0], price_grid[-1], capital
-    )
-
-    order_book = OrderBook()
-
-    # Initial price is left of range, we only have asks !
-    if initial_price <= price_grid[0]:
-        # To check with nb_price_points -1
-        list_quantity_A = [initial_capital_A / (nb_price_points - 1)] * (
-            nb_price_points - 1
-        )
-        asks = SortedList(
-            [Order("ask", q, p) for p, q in zip(price_grid[1:], list_quantity_A)]
-        )
-        return OrderBook(asks=asks)
-
-    # Initial price right of range, we only have bids !
-    if initial_price >= price_grid[-1]:
-        # Since its quote we divide with each price grid value.
-        sliced_price_grid = price_grid[:-1]
-        list_quantity_B = np.array(
-            [initial_capital_B / (nb_price_points - 1)] * (nb_price_points - 1)
-        ) / np.array(sliced_price_grid)
-        bids = SortedList(
+        self.orders[: nb_price_points // 2] = np.array(
             [
-                Order("bid", q, p)
-                for p, q in zip(sliced_price_grid, list(list_quantity_B))
+                Order(OrderType.BID, capital / price / nb_price_points, price)
+                for price in price_grid[: nb_price_points // 2]
             ]
         )
-        return Order(bids=bids)
-
-    floor_price0_index, floor_price0 = cursor(initial_price, price_grid)
-    # print("floorprice", floor_price0_index, floor_price0)
-    # Checking floor price index is None even if it's not possible with two previous ifs  (we never know)
-    if floor_price0_index is None:
-        raise Exception("Floor price index is None")
-
-    nb_bids = floor_price0_index  # > 0
-    # FIXME: Change with vectorized version
-    for i in range(floor_price0_index - 1, -1, -1):
-        # caveat: we buy a fixed value of A with initial_capital_B/price_grid[i] * 1/nb_bids
-        # we could also buy a fixed amount of A at each bid; this is one way to do it
-        list_quantity_B = initial_capital_B / nb_bids * 1 / price_grid[i]
-        order_book = add_limit_order(
-            Order("bid", list_quantity_B, price_grid[i]), order_book=order_book
+        self.orders[nb_price_points // 2 :] = np.array(
+            [
+                Order(
+                    OrderType.ASK, capital / self.current_price / nb_price_points, price
+                )
+                for price in price_grid[nb_price_points // 2 + 1 :]
+            ]
         )
 
-    # we fill asks above floor_price and leave no hole
-    nb_asks = nb_price_points - nb_bids - 1  # should check > 0
-    for i in range(floor_price0_index + 1, nb_price_points):
-        list_quantity_A = initial_capital_A / nb_asks
-        order_book = add_limit_order(
-            Order("ask", list_quantity_A, price_grid[i]), order_book=order_book
-        )
+    def add_order(self, new_order: Order) -> None:
+        if new_order.price < self.orders[0].price:
+            self.orders = np.insert(self.orders, 0, new_order)
+            return
 
-    # print(nb_asks, nb_bids)
+        for i in range(len(self.orders)):
+            if (
+                new_order.price == self.orders[i].price
+                and new_order.order_type == self.orders[i].order_type
+            ):
+                self.orders[i].qty += new_order.qty
+                return
+            # Same price, different type
+            if new_order.price == self.orders[i].price:
+                self.orders = np.insert(self.orders, i, new_order)
+                return
 
-    return order_book
+            if self.orders[i].price < new_order.price and i == len(self.orders) - 1:
+                self.orders = np.append(self.orders, new_order)
+                return
+
+            if self.orders[i].price < new_order.price < self.orders[i + 1].price:
+                self.orders = np.insert(self.orders, i + 1, new_order)
+                return
+
+    def place_dual_offers(self, transactions: list[Order]) -> tuple[float, float]:
+        side = transactions[0].order_type
+        quote_change = 0
+        base_change = 0
+
+        for transaction in transactions:
+            if side == OrderType.BID:
+                quote_change -= transaction.price * transaction.qty
+                base_change += transaction.qty
+                order_price = self.price_grid[
+                    self.price_grid.index(transaction.price) + 1
+                ]
+                self.add_order(
+                    Order(
+                        OrderType.ASK,
+                        transaction.qty,
+                        order_price,
+                    )
+                )
+            elif side == OrderType.ASK:
+                quote_change += transaction.price * transaction.qty
+                base_change -= transaction.qty
+                order_price = self.price_grid[
+                    self.price_grid.index(transaction.price) - 1
+                ]
+                self.add_order(
+                    Order(
+                        OrderType.BID,
+                        transaction.qty * transaction.price / order_price,
+                        order_price,
+                    )
+                )
+
+        return quote_change, base_change
+
+    def arbitrate(self, spot_price: float) -> list[Order]:
+        transactions = []
+
+        if spot_price < self.current_price:
+            transactions.extend(
+                order
+                for order in self.orders
+                if order.order_type == OrderType.BID and spot_price <= order.price
+            )
+            self.orders = np.array(
+                [
+                    order
+                    for order in self.orders
+                    if (order.order_type == OrderType.BID and spot_price > order.price)
+                    or order.order_type == OrderType.ASK
+                ]
+            )
+
+        elif spot_price > self.current_price:
+            transactions.extend(
+                order
+                for order in self.orders
+                if order.order_type == OrderType.ASK and spot_price >= order.price
+            )
+            self.orders = np.array(
+                [
+                    order
+                    for order in self.orders
+                    if (order.order_type == OrderType.ASK and spot_price < order.price)
+                    or order.order_type == OrderType.BID
+                ]
+            )
+
+        self.current_price = spot_price
+
+        return transactions

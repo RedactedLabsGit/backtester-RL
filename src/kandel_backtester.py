@@ -8,6 +8,10 @@ from src.order_book import OrderBook
 from src.order import Order
 
 
+class KandelBacktesterConfig(TypedDict):
+    position_history: bool
+
+
 class KandelState(TypedDict):
     """
     KandelState represents the state of a Kandel strategy.
@@ -54,7 +58,8 @@ class KandelBacktester:
     def __init__(
         self,
         prices: Series,
-        config: KandelConfig,
+        backtester_config: KandelBacktesterConfig,
+        kandel_config: KandelConfig,
         window_vol: Series,
         exit_vol: Series,
     ) -> None:
@@ -73,8 +78,9 @@ class KandelBacktester:
         """
 
         self.prices = prices
+        self.config = backtester_config
         self.kandel = Kandel(
-            config, prices.iloc[0], window_vol.iloc[0], exit_vol.iloc[0]
+            kandel_config, prices.iloc[0], window_vol.iloc[0], exit_vol.iloc[0]
         )
         self.window_vol = window_vol
         self.exit_vol = exit_vol
@@ -95,14 +101,13 @@ class KandelBacktester:
             transactions = []
             generated_fees = 0
 
-            self.kandel.update_spot_and_vol(price, self.window_vol.iloc[i])
-            if self.kandel.is_active:
-                transactions = self.kandel.arbitrate_order_book()
-                if self.kandel.should_exit(self.exit_vol.iloc[i]):
-                    self.kandel.exit()
+            current_exit_vol = self.exit_vol.iloc[i]
+            self.kandel.update_kandel_state(
+                price, self.window_vol.iloc[i], current_exit_vol
+            )
 
             if i % self.kandel.config["window"] == 0 and not self.kandel.should_exit(
-                self.exit_vol.iloc[i]
+                current_exit_vol
             ):
                 generated_fees = self.kandel.rebalance()
 
@@ -136,9 +141,10 @@ class KandelBacktester:
         for i, state in enumerate(self._generate_kandel_states(loading_bar)):
             quotes[i] = state["quote"]
             bases[i] = state["base"]
-            order_book_history[i] = state["order_book"]
             transaction_history.append(state["transactions"])
             generated_fees[i] = state["generated_fees"]
+            if self.config["position_history"]:
+                order_book_history[i] = state["order_book"].get_state()
 
         res = DataFrame(
             {

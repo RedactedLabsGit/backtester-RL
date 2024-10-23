@@ -1,14 +1,18 @@
 {
-    "_": "Configuration file for both backtester (samples and long periods).",
-    
+    "_title": "Configuration file for both backtester (samples and long periods).",
+    "_sub_title_1": "BACKTESTER CONFIG",
+    "_doc_position_history": "ONE SAMPLE - if true, the backtester will show a graph with the detailed position history.",
+    "position_history": false,
+
+    "_sub_title_2": "KANDEL CONFIG",
     "_doc_window": "- time in hours before rebalancing, the vol is also computed on this time window.",
     "window": 24,
 
     "_doc_initial_quote": "- the size of bids in {quote asset} at the beginning.",
-    "initial_quote": 37500,
+    "initial_quote": 500000,
     
     "_doc_initial_base": "- the size of asks in {quote asset} at the beginning, the simulator will swap to base asset at day 0.",
-    "initial_base": 37500,
+    "initial_base": 500000,
     
     "vol_mult": 1.645,
     
@@ -25,6 +29,6 @@
     "_doc_asymmetric_exit_threshold": "- if the open/close price ratio is bigger than the ratio, the position will exit with a 75/25 ratio instead of 50/50.",
     "asymmetric_exit_threshold": 0.015,
 
-    "_doc_samples_length": "MULTI SAMPLES ONLY - the period of one sample in days (excluding window).",
+    "_doc_samples_length": "MULTI SAMPLES - the period of one sample in days (excluding window).",
     "samples_length": 3
 }

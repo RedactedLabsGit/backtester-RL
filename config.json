@@ -2,7 +2,7 @@
     "sample_mode": "single",
     "data_path": "data/binance/ETHUSDC.csv",
     "start_date": "2024-01-01",
-    "end_date": "2024-05-01",
+    "end_date": "2024-12-31",
     "samples_length": 3,
     "exit_vol_window": 12,
 
@@ -15,7 +15,7 @@
         "vol_mult": 1.645,
         "n_points": 10,
         "step_size": 1,
-        "exit_vol_threshold": 0.0175,
+        "exit_vol_threshold": 0.0172,
         "asymmetric_exit_threshold": 0.015
     }
 }

@@ -4,6 +4,7 @@ import pandas as pd
 from enum import Enum
 from typing import TypedDict
 from multiprocessing import Pool
+from datetime import datetime, timezone
 
 from src.kandel import KandelConfig
 from src.kandel_backtester import KandelBacktesterConfig, KandelBacktester
@@ -17,8 +18,8 @@ class SampleMode(Enum):
 class Config(TypedDict):
     sample_mode: SampleMode
     data_path: str
-    start_date: str
-    end_date: str
+    start_date: datetime
+    end_date: datetime
     samples_length: int
     exit_vol_window: int
     backtester_config: KandelBacktesterConfig
@@ -32,8 +33,12 @@ def get_config(config_path: str) -> Config:
     config = Config(
         sample_mode=SampleMode(raw_config["sample_mode"]),
         data_path=raw_config["data_path"],
-        start_date=raw_config["start_date"],
-        end_date=raw_config["end_date"],
+        start_date=datetime.strptime(raw_config["start_date"], "%Y-%m-%d").astimezone(
+            tz=timezone.utc
+        ),
+        end_date=datetime.strptime(raw_config["end_date"], "%Y-%m-%d").astimezone(
+            tz=timezone.utc
+        ),
         samples_length=raw_config["samples_length"] * 24 * 3600,
         exit_vol_window=raw_config["exit_vol_window"] * 3600,
         backtester_config=KandelBacktesterConfig(raw_config["backtester_config"]),
@@ -78,9 +83,12 @@ def compute_volatilities(
     return df
 
 
-# TODO: handle start/end date.
-def trim_df(df: pd.DataFrame, windows_length: int) -> pd.DataFrame:
+def trim_df(
+    df: pd.DataFrame, windows_length: int, start_date: datetime, end_date: datetime
+) -> pd.DataFrame:
     df = df.iloc[windows_length:]
+
+    df = df.loc[start_date:end_date]
 
     return df
 
@@ -175,7 +183,7 @@ def compute_sample_results(
     return price_diff, quote_returns, base_returns
 
 
-def compute_results(
+def compute_single_results(
     df: pd.DataFrame,
     res: pd.DataFrame,
     initial_capital: float,

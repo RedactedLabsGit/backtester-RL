@@ -9,7 +9,7 @@ from src.utils import (
     trim_df,
     get_samples,
     get_backtester,
-    compute_results,
+    compute_single_results,
     run_multi_samples,
 )
 from src.graphs_utils import (
@@ -21,20 +21,24 @@ from src.graphs_utils import (
 
 def handle_single(df: DataFrame, config: Config) -> None:
     backtester = get_backtester(
-        df,
+        df["price"],
+        df["window_vol"],
+        df["exit_vol"],
         config["backtester_config"],
         config["kandel_config"],
     )
 
     res, _ = backtester.run()
-    res_1h = compute_results(df, res, config["kandel_config"]["initial_capital"])
+    single_results = compute_single_results(
+        df, res, config["kandel_config"]["initial_capital"]
+    )
 
     cumulative_generated_fees(
-        res_1h["cum_generated_fees"], config["kandel_config"]["initial_capital"]
+        single_results["cum_generated_fees"], config["kandel_config"]["initial_capital"]
     )
 
     strategy_evolution(
-        res_1h,
+        single_results,
         config["kandel_config"]["exit_vol_threshold"],
     )
 
@@ -76,6 +80,8 @@ def main():
     df = trim_df(
         df,
         config["kandel_config"]["window"] + config["exit_vol_window"],
+        config["start_date"],
+        config["end_date"],
     )
 
     if config["sample_mode"] == SampleMode.SINGLE:

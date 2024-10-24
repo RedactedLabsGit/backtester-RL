@@ -201,3 +201,13 @@ def compute_single_results(
     res_1h = res.resample("1H").last()
 
     return res_1h
+
+
+def parse_order_book_history(
+    order_book_history: list[dict], indexes: pd.Index
+) -> pd.DataFrame:
+    df = pd.DataFrame(order_book_history)
+    df.index = indexes
+    df_1h = df.resample("1H").last()
+
+    return df_1h

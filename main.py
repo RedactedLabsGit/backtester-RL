@@ -11,11 +11,13 @@ from src.utils import (
     get_backtester,
     compute_single_results,
     run_multi_samples,
+    parse_order_book_history,
 )
 from src.graphs_utils import (
     cumulative_generated_fees,
     strategy_evolution,
     returns_vs_final_price_diff,
+    kandel_evolution,
 )
 
 
@@ -28,7 +30,7 @@ def handle_single(df: DataFrame, config: Config) -> None:
         config["kandel_config"],
     )
 
-    res, _ = backtester.run()
+    res, order_book_history = backtester.run()
     single_results = compute_single_results(
         df, res, config["kandel_config"]["initial_capital"]
     )
@@ -41,6 +43,10 @@ def handle_single(df: DataFrame, config: Config) -> None:
         single_results,
         config["kandel_config"]["exit_vol_threshold"],
     )
+
+    if config["backtester_config"]["position_history"]:
+        order_book_parsed = parse_order_book_history(order_book_history, res.index)
+        kandel_evolution(order_book_parsed, single_results["price"])
 
 
 def handle_multi(df: DataFrame, config: Config) -> None:

@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -260,3 +261,83 @@ def returns_vs_final_price_diff(
     )
 
     fig.write_html("results/returns_vs_final_price_diff.html")
+
+
+def kandel_evolution(
+    df_order_book: pd.DataFrame,
+    prices: pd.Series,
+):
+    fig = make_subplots(
+        rows=1,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.05,
+        subplot_titles=(""),
+        specs=[[{"secondary_y": True}]],
+    )
+
+    for i, ob in enumerate(df_order_book.iterrows()):
+        bids = ob[1].item()["bids"]
+        asks = ob[1].item()["asks"]
+
+        fig.add_trace(
+            go.Scatter(
+                x=[i for _ in range(len(bids))],
+                y=tuple(bids),
+                mode="markers",
+                name="Bids",
+                showlegend=False,
+                marker=dict(
+                    color="green",
+                    symbol="line-ew-open",
+                    size=8,
+                    line=dict(width=5, color="black"),
+                ),
+            ),
+        )
+
+        fig.add_trace(
+            go.Scatter(
+                x=[i for _ in range(len(asks))],
+                y=tuple(asks),
+                mode="markers",
+                name="Asks",
+                showlegend=False,
+                marker=dict(
+                    color="red",
+                    symbol="line-ew-open",
+                    size=8,
+                    line=dict(width=5, color="black"),
+                ),
+            ),
+        )
+
+    fig.add_trace(
+        go.Scatter(
+            x=[i for i in range(len(df_order_book))],
+            y=prices,
+            mode="lines",
+            name="Price",
+            marker=dict(color="blue"),
+            hovertext=[
+                f"Price: {prices.iloc[i]:.2f}<br>Time: {prices.index[i].strftime('%b %d %H:%M')}"
+                for i in range(len(prices))
+            ],
+        )
+    )
+
+    fig.update_layout(
+        height=1000,
+        width=1600,
+        title_text="Position history",
+    )
+
+    fig.update_xaxes(
+        tickvals=np.arange(0, len(prices), len(prices) // 6),
+        ticktext=[
+            prices.index[i].strftime("%b %d, %Hh")
+            for i in np.arange(0, len(prices), len(prices) // 6)
+        ],
+    )
+
+    fig.write_html("results/kandel_evolution.html")

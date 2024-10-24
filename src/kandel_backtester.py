@@ -117,7 +117,7 @@ class KandelBacktester:
                 generated_fees=generated_fees,
             )
 
-    def run(self) -> tuple[DataFrame, list[OrderBook]]:
+    def run(self, loading: bool = True) -> tuple[DataFrame, list[OrderBook]]:
         """
         Run the backtest for the Kandel strategy.
 
@@ -132,7 +132,7 @@ class KandelBacktester:
         order_book_history = np.empty(len(self.prices), dtype=OrderBook)
         generated_fees = np.zeros(len(self.prices))
 
-        loading_bar = tqdm(total=len(self.prices))
+        loading_bar = tqdm(total=len(self.prices), disable=not loading)
 
         for i, state in enumerate(self._generate_kandel_states(loading_bar)):
             quotes[i] = state["quote"]

@@ -167,3 +167,96 @@ def strategy_evolution(res_1h: pd.DataFrame, exit_vol_threshold: float):
     fig.update_yaxes(row=2, col=1, tickformat=".2%")
 
     fig.write_html("results/strategy_evolution.html")
+
+
+def returns_vs_final_price_diff(
+    final_price_diff_arr, quote_returns_arr, base_returns_arr
+):
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        specs=[[{}], [{}]],
+        vertical_spacing=0.05,
+        subplot_titles=("Over holding quote", "Hover holding base"),
+    )
+
+    quote_negative_returns = [
+        [price, ret]
+        for price, ret in zip(final_price_diff_arr, quote_returns_arr)
+        if ret < 0
+    ]
+    quote_positive_returns = [
+        [price, ret]
+        for price, ret in zip(final_price_diff_arr, quote_returns_arr)
+        if ret >= 0
+    ]
+
+    base_negative_returns = [
+        [price, ret]
+        for price, ret in zip(final_price_diff_arr, base_returns_arr)
+        if ret < 0
+    ]
+    base_positive_returns = [
+        [price, ret]
+        for price, ret in zip(final_price_diff_arr, base_returns_arr)
+        if ret >= 0
+    ]
+
+    fig.add_trace(
+        go.Scatter(
+            x=[row[0] for row in quote_negative_returns],
+            y=[row[1] for row in quote_negative_returns],
+            name="Returns",
+            mode="markers",
+            marker=dict(color="red"),
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[row[0] for row in quote_positive_returns],
+            y=[row[1] for row in quote_positive_returns],
+            name="Returns",
+            mode="markers",
+            marker=dict(color="green"),
+        ),
+        row=1,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[row[0] for row in base_negative_returns],
+            y=[row[1] for row in base_negative_returns],
+            name="Returns",
+            mode="markers",
+            marker=dict(color="red"),
+        ),
+        row=2,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[row[0] for row in base_positive_returns],
+            y=[row[1] for row in base_positive_returns],
+            name="Returns",
+            mode="markers",
+            marker=dict(color="green"),
+        ),
+        row=2,
+        col=1,
+    )
+
+    fig.update_xaxes(title_text="Price difference on period", row=2, col=1)
+    fig.update_yaxes(title_text="Returns", row=1, col=1)
+    fig.update_yaxes(title_text="Returns", row=2, col=1)
+
+    fig.update_layout(
+        title="Returns vs Final Price Difference",
+        showlegend=False,
+        height=800,
+        width=1200,
+    )
+
+    fig.write_html("results/returns_vs_final_price_diff.html")

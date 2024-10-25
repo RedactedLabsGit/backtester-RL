@@ -8,3 +8,4 @@ tqdm
 datetime
 nbformat>=4.2.0
 plotly
+Flask

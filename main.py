@@ -1,4 +1,5 @@
 from pandas import DataFrame
+from flask import Flask, request
 
 from src.utils import (
     Config,
@@ -20,6 +21,7 @@ from src.graphs_utils import (
     kandel_evolution,
 )
 
+app = Flask(__name__)
 
 def handle_single(df: DataFrame, config: Config) -> None:
     backtester = get_backtester(
@@ -73,9 +75,7 @@ def handle_multi(df: DataFrame, config: Config) -> None:
     )
 
 
-def main():
-    config = get_config("config.json")
-
+def process(config):
     df = load_data(config["data_path"])
     df = compute_volatilities(
         df,
@@ -96,5 +96,12 @@ def main():
         handle_multi(df, config)
 
 
-if __name__ == "__main__":
-    main()
+@app.route('/process', methods=['POST'])
+def process_params():
+    data = request.get_json(silent=True)
+
+    res = process(data);
+    return res;
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=3000)

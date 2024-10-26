@@ -1,5 +1,4 @@
 from pandas import DataFrame
-from flask import Flask, request
 
 from src.utils import (
     Config,
@@ -20,8 +19,6 @@ from src.graphs_utils import (
     returns_vs_final_price_diff,
     kandel_evolution,
 )
-
-app = Flask(__name__)
 
 def handle_single(df: DataFrame, config: Config) -> None:
     backtester = get_backtester(
@@ -51,12 +48,17 @@ def handle_single(df: DataFrame, config: Config) -> None:
         kandel_evolution(order_book_parsed, single_results["price"])
 
 
-def handle_multi(df: DataFrame, config: Config) -> None:
+def handle_multi(df: DataFrame, config) -> None:
+    print("init simulation");
+    print(config);
+    print(df.size);
+    print(config["samples_length"])
     prices_samples, window_vol_samples, exit_vol_samples = get_samples(
         df,
         config["samples_length"],
     )
 
+    print("start simulation");
     results = run_multi_samples(
         prices_samples,
         window_vol_samples,
@@ -64,10 +66,13 @@ def handle_multi(df: DataFrame, config: Config) -> None:
         config["backtester_config"],
         config["kandel_config"],
     )
+    print("compute simulation");
+    print(len(results));
     final_price_diff_arr, final_quote_returns_arr, final_base_returns_arr = zip(
         *results
     )
 
+    print("start graph gen");
     returns_vs_final_price_diff(
         final_price_diff_arr,
         final_quote_returns_arr,
@@ -76,6 +81,7 @@ def handle_multi(df: DataFrame, config: Config) -> None:
 
 
 def process(config):
+    print("start process");
     df = load_data(config["data_path"])
     df = compute_volatilities(
         df,
@@ -91,17 +97,9 @@ def process(config):
     )
 
     if config["sample_mode"] == SampleMode.SINGLE:
+        print("simple mode");
         handle_single(df, config)
     elif config["sample_mode"] == SampleMode.MULTI:
+        print("multi mode");
         handle_multi(df, config)
-
-
-@app.route('/process', methods=['POST'])
-def process_params():
-    data = request.get_json(silent=True)
-
-    res = process(data);
-    return res;
-
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=3000)
+    print("end process");

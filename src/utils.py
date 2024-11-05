@@ -26,10 +26,7 @@ class Config(TypedDict):
     kandel_config: KandelConfig
 
 
-def get_config(config_path: str) -> Config:
-    with open(config_path) as f:
-        raw_config = json.load(f)
-
+def get_config(raw_config: dict) -> Config:
     config = Config(
         sample_mode=SampleMode(raw_config["sample_mode"]),
         data_path=raw_config["data_path"],

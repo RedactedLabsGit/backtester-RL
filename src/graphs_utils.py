@@ -74,6 +74,16 @@ def strategy_evolution(res_1h: pd.DataFrame, exit_vol_threshold: float):
         row=2,
         col=1,
     )
+    fig.add_trace(
+        go.Scatter(
+            x=res_1h.index,
+            y=res_1h.returns_even,
+            mode="lines",
+            name="Over holding 50/50",
+        ),
+        row=2,
+        col=1,
+    )
 
     fig.add_trace(
         go.Scatter(

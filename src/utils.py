@@ -193,6 +193,14 @@ def compute_single_results(
     res["mtm_base"] = res["base"] + res["quote"] / res["price"]
     res["returns_quote"] = res["mtm_quote"] / initial_capital - 1
     res["returns_base"] = res["mtm_base"] / (initial_capital / df["price"].iloc[0]) - 1
+    res["returns_even"] = (
+        res["mtm_quote"]
+        / (
+            initial_capital / 2
+            + (initial_capital / 2 / df["price"].iloc[0] * res["price"])
+        )
+        - 1
+    )
     res["cum_generated_fees"] = res["generated_fees"].cumsum()
 
     res_1h = res.resample("1H").last()

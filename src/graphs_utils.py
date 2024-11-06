@@ -1,7 +1,16 @@
 import numpy as np
 import pandas as pd
+import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
+
+def format_big_number(x):
+    for unit in ["", "K", "M"]:
+        if abs(x) < 1000.0:
+            return f"{x:6.2f}{unit}"
+        x /= 1000.0
+    return f"{x:6.2f}B"
 
 
 def cumulative_generated_fees(
@@ -30,14 +39,16 @@ def strategy_evolution(res_1h: pd.DataFrame, exit_vol_threshold: float):
             [{"secondary_y": True}],
         ],
         vertical_spacing=0.05,
-        subplot_titles=("MTM", "Returns", "Price", "Balance"),
+        subplot_titles=("MTM", "Returns", "Price & Vol", "Balance"),
     )
+
     fig.add_trace(
         go.Scatter(
             x=res_1h.index,
             y=res_1h.mtm_quote,
             mode="lines",
-            name="MTM in USDC",
+            name="MTM in quote",
+            marker=dict(color="blue"),
         ),
         row=1,
         col=1,
@@ -47,7 +58,8 @@ def strategy_evolution(res_1h: pd.DataFrame, exit_vol_threshold: float):
             x=res_1h.index,
             y=res_1h.mtm_base,
             mode="lines",
-            name="MTM in ETH",
+            name="MTM in base",
+            marker=dict(color="orange"),
         ),
         row=1,
         col=1,
@@ -59,7 +71,8 @@ def strategy_evolution(res_1h: pd.DataFrame, exit_vol_threshold: float):
             x=res_1h.index,
             y=res_1h.returns_quote,
             mode="lines",
-            name="Over holding USDC",
+            name="Over holding quote",
+            marker=dict(color="royalblue"),
         ),
         row=2,
         col=1,
@@ -69,7 +82,8 @@ def strategy_evolution(res_1h: pd.DataFrame, exit_vol_threshold: float):
             x=res_1h.index,
             y=res_1h.returns_base,
             mode="lines",
-            name="Over holding ETH",
+            name="Over holding base",
+            marker=dict(color="darkorange"),
         ),
         row=2,
         col=1,
@@ -80,32 +94,46 @@ def strategy_evolution(res_1h: pd.DataFrame, exit_vol_threshold: float):
             y=res_1h.returns_even,
             mode="lines",
             name="Over holding 50/50",
+            marker=dict(color="seagreen"),
         ),
         row=2,
         col=1,
     )
 
     fig.add_trace(
-        go.Scatter(
+        go.Scattergl(
+            x=res_1h.index,
+            y=res_1h.window_vol,
+            mode="lines",
+            name="Rebalance window vol",
+            marker=dict(color="firebrick"),
+            opacity=0.5,
+        ),
+        secondary_y=True,
+        row=3,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scattergl(
+            x=res_1h.index,
+            y=res_1h.exit_vol,
+            mode="lines",
+            name="Exit strat vol",
+            marker=dict(color="red"),
+            opacity=0.5,
+        ),
+        secondary_y=True,
+        row=3,
+        col=1,
+    )
+    fig.add_trace(
+        go.Scattergl(
             x=res_1h.index,
             y=res_1h.price,
             mode="lines",
             name="Price",
+            marker=dict(color="gold"),
         ),
-        row=3,
-        col=1,
-    )
-
-    fig.add_trace(
-        go.Scatter(x=res_1h.index, y=res_1h.window_vol, mode="lines", name="HV"),
-        secondary_y=True,
-        row=3,
-        col=1,
-    )
-
-    fig.add_trace(
-        go.Scatter(x=res_1h.index, y=res_1h.exit_vol, mode="lines", name="Exit vol"),
-        secondary_y=True,
         row=3,
         col=1,
     )
@@ -126,6 +154,7 @@ def strategy_evolution(res_1h: pd.DataFrame, exit_vol_threshold: float):
             name="Quote size",
             legendgroup="Quote",
             stackgroup="1",
+            marker=dict(color="dodgerblue"),
         ),
         row=4,
         col=1,
@@ -138,6 +167,7 @@ def strategy_evolution(res_1h: pd.DataFrame, exit_vol_threshold: float):
             name="Base size",
             legendgroup="Base",
             stackgroup="1",
+            marker=dict(color="coral"),
         ),
         row=4,
         col=1,
@@ -149,8 +179,9 @@ def strategy_evolution(res_1h: pd.DataFrame, exit_vol_threshold: float):
             x=res_1h.index,
             y=-res_1h.quote,
             name="Quote size",
-            legendgroup="Quote",
             marker=dict(color="rgba(0,0,0,0)"),
+            showlegend=False,
+            hoverinfo="none",
         ),
         row=4,
         col=1,
@@ -161,8 +192,9 @@ def strategy_evolution(res_1h: pd.DataFrame, exit_vol_threshold: float):
             x=res_1h.index,
             y=res_1h.base,
             name="Base size",
-            legendgroup="Base",
             marker=dict(color="rgba(0,0,0,0)"),
+            showlegend=False,
+            hoverinfo="none",
         ),
         row=4,
         col=1,
@@ -174,8 +206,42 @@ def strategy_evolution(res_1h: pd.DataFrame, exit_vol_threshold: float):
         width=1600,
         title_text="Backtesting results",
     )
+    fig.update_yaxes(row=1, col=1, title_text="MTM in quote", secondary_y=False)
+    fig.update_yaxes(row=1, col=1, title_text="MTM in base", secondary_y=True)
 
-    fig.update_yaxes(row=2, col=1, tickformat=".2%")
+    fig.update_yaxes(row=2, col=1, tickformat=".2%", title_text="Returns")
+
+    fig.update_yaxes(row=3, col=1, title_text="Price", secondary_y=False)
+    fig.update_yaxes(row=3, col=1, title_text="Vol", secondary_y=True)
+
+    fig.update_yaxes(
+        row=4,
+        col=1,
+        title_text="Quote balance",
+        secondary_y=False,
+        tickvals=["", "", 0, max(res_1h.quote) / 2, max(res_1h.quote)],
+        ticktext=[
+            "",
+            "",
+            0,
+            format_big_number(max(res_1h.quote) / 2),
+            format_big_number(max(res_1h.quote)),
+        ],
+    )
+    fig.update_yaxes(
+        row=4,
+        col=1,
+        title_text="Base balance",
+        secondary_y=True,
+        tickvals=[-max(res_1h.base), -max(res_1h.base) / 2, 0, "", ""],
+        ticktext=[
+            format_big_number(max(res_1h.base)),
+            format_big_number(max(res_1h.base) / 2),
+            0,
+            "",
+            "",
+        ],
+    )
 
     fig.write_html("results/strategy_evolution.html")
 

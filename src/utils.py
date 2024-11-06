@@ -216,3 +216,31 @@ def parse_order_book_history(
     df_1h = df.resample("1H").last()
 
     return df_1h
+
+
+def save_htmls(*args):
+    htmls = [open(arg, "r").read() for arg in args if arg]
+
+    html_res = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Results</title>
+
+        <style>
+            .container {{
+                display: flex;
+                justify-content: space-between;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            {"".join(htmls)}
+        </div>
+    </body>
+    </html>
+    """
+
+    with open("results/backtest_results.html", "w") as f:
+        f.write(html_res)

@@ -3,7 +3,6 @@ from pandas import DataFrame
 from src.utils import (
     Config,
     SampleMode,
-    get_config,
     load_data,
     compute_volatilities,
     trim_df,
@@ -12,6 +11,7 @@ from src.utils import (
     compute_single_results,
     run_multi_samples,
     parse_order_book_history,
+    save_htmls,
 )
 from src.graphs_utils import (
     cumulative_generated_fees,
@@ -19,6 +19,7 @@ from src.graphs_utils import (
     returns_vs_final_price_diff,
     kandel_evolution,
 )
+
 
 def handle_single(df: DataFrame, config: Config) -> None:
     backtester = get_backtester(
@@ -34,6 +35,8 @@ def handle_single(df: DataFrame, config: Config) -> None:
         df, res, config["kandel_config"]["initial_capital"]
     )
 
+    single_results.to_csv("results/single_results.csv")
+
     cumulative_generated_fees(
         single_results["cum_generated_fees"], config["kandel_config"]["initial_capital"]
     )
@@ -45,20 +48,26 @@ def handle_single(df: DataFrame, config: Config) -> None:
 
     if config["backtester_config"]["position_history"]:
         order_book_parsed = parse_order_book_history(order_book_history, res.index)
+        order_book_parsed.to_csv("results/order_book_parsed.csv")
         kandel_evolution(order_book_parsed, single_results["price"])
+
+    save_htmls(
+        "results/generated_fees.html",
+        "results/strategy_evolution.html",
+        (
+            "results/kandel_evolution.html"
+            if config["backtester_config"]["position_history"]
+            else None
+        ),
+    )
 
 
 def handle_multi(df: DataFrame, config) -> None:
-    print("init simulation");
-    print(config);
-    print(df.size);
-    print(config["samples_length"])
     prices_samples, window_vol_samples, exit_vol_samples = get_samples(
         df,
         config["samples_length"],
     )
 
-    print("start simulation");
     results = run_multi_samples(
         prices_samples,
         window_vol_samples,
@@ -66,22 +75,24 @@ def handle_multi(df: DataFrame, config) -> None:
         config["backtester_config"],
         config["kandel_config"],
     )
-    print("compute simulation");
-    print(len(results));
+
     final_price_diff_arr, final_quote_returns_arr, final_base_returns_arr = zip(
         *results
     )
 
-    print("start graph gen");
     returns_vs_final_price_diff(
         final_price_diff_arr,
         final_quote_returns_arr,
         final_base_returns_arr,
     )
 
+    save_htmls(
+        "results/returns_vs_final_price_diff.html",
+    )
+
 
 def process(config):
-    print("start process");
+    print("<< Start process >>")
     df = load_data(config["data_path"])
     df = compute_volatilities(
         df,
@@ -97,9 +108,7 @@ def process(config):
     )
 
     if config["sample_mode"] == SampleMode.SINGLE:
-        print("simple mode");
         handle_single(df, config)
     elif config["sample_mode"] == SampleMode.MULTI:
-        print("multi mode");
         handle_multi(df, config)
-    print("end process");
+    print("<< End process >>")

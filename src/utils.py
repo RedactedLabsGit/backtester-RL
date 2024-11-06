@@ -42,6 +42,7 @@ def get_config(raw_config: dict) -> Config:
         kandel_config=KandelConfig(
             window=raw_config["kandel_config"]["window"] * 3600,
             initial_capital=raw_config["kandel_config"]["initial_capital"],
+            performance_fees=raw_config["kandel_config"]["performance_fees"],
             vol_mult=raw_config["kandel_config"]["vol_mult"],
             n_points=raw_config["kandel_config"]["n_points"],
             step_size=raw_config["kandel_config"]["step_size"],

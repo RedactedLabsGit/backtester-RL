@@ -11,6 +11,8 @@ class KandelConfig(TypedDict):
     Attributes:
         initial_capital (float):
             The initial capital size.
+        performance_fees (float):
+            The performance fees.
         vol_mult (float):
             The volatility multiplier, used to make the position range dynamic.
         n_points (int):
@@ -26,6 +28,7 @@ class KandelConfig(TypedDict):
     """
 
     initial_capital: float
+    performance_fees: float
     vol_mult: float
     n_points: int
     step_size: int
@@ -139,7 +142,9 @@ class Kandel:
         self._update_price_grid()
         capital = self.quote + self.base * self.spot_price
         generated_fees = (
-            (capital - self.open_capital) * 0.1 if capital > self.open_capital else 0
+            (capital - self.open_capital) * self.config["performance_fees"]
+            if capital > self.open_capital
+            else 0
         )
         capital -= generated_fees
 

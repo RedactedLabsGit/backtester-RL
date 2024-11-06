@@ -35,8 +35,6 @@ def handle_single(df: DataFrame, config: Config) -> None:
         df, res, config["kandel_config"]["initial_capital"]
     )
 
-    single_results.to_csv("results/single_results.csv")
-
     cumulative_generated_fees(
         single_results["cum_generated_fees"], config["kandel_config"]["initial_capital"]
     )
@@ -48,7 +46,6 @@ def handle_single(df: DataFrame, config: Config) -> None:
 
     if config["backtester_config"]["position_history"]:
         order_book_parsed = parse_order_book_history(order_book_history, res.index)
-        order_book_parsed.to_csv("results/order_book_parsed.csv")
         kandel_evolution(order_book_parsed, single_results["price"])
 
     save_htmls(

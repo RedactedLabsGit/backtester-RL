@@ -1,0 +1,21 @@
+{
+    "sample_mode": "single",
+    "data_path": "data/binance/ETHUSDC.csv",
+    "start_date": "2024-01-01",
+    "end_date": "2024-12-10",
+    "samples_length": 3,
+    "exit_vol_window": 12,
+
+    "backtester_config": {
+        "position_history": true
+    },
+    "kandel_config": {
+        "window": 24,
+        "initial_capital": 1000000,
+        "vol_mult": 1.645,
+        "n_points": 10,
+        "step_size": 1,
+        "exit_vol_threshold": 0.0172,
+        "asymmetric_exit_threshold": 0.015
+    }
+}

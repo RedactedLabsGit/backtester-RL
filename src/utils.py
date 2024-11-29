@@ -1,4 +1,3 @@
-import json
 import numpy as np
 import pandas as pd
 from enum import Enum
@@ -42,8 +41,12 @@ def get_config(raw_config: dict) -> Config:
         kandel_config=KandelConfig(
             window=raw_config["kandel_config"]["window"] * 3600,
             initial_capital=raw_config["kandel_config"]["initial_capital"],
+            decimals_diff=raw_config["kandel_config"]["base_decimals"]
+            - raw_config["kandel_config"]["quote_decimals"],
+            quote_decimals=raw_config["kandel_config"]["quote_decimals"],
             performance_fees=raw_config["kandel_config"]["performance_fees"],
             vol_mult=raw_config["kandel_config"]["vol_mult"],
+            range_mult=raw_config["kandel_config"]["range_mult"],
             n_points=raw_config["kandel_config"]["n_points"],
             step_size=raw_config["kandel_config"]["step_size"],
             exit_vol_threshold=raw_config["kandel_config"]["exit_vol_threshold"],

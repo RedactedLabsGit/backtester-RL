@@ -1,7 +1,8 @@
 import numpy as np
 from typing import TypedDict
 
-from src.order_book import OrderBook
+from src.order_book import OrderBook, price_to_tick
+from src.order import OrderType
 
 
 class KandelConfig(TypedDict):
@@ -11,10 +12,14 @@ class KandelConfig(TypedDict):
     Attributes:
         initial_capital (float):
             The initial capital size.
+        decimals_diff (int):
+            The difference between base decimals & quote decimals.
         performance_fees (float):
             The performance fees.
         vol_mult (float):
-            The volatility multiplier, used to make the position range dynamic.
+            The volatility multiplier, used to make the position range dynamic based on vol.
+        range_mult (float):
+            The range multiplier, used to make the position range dynamic based on price.
         n_points (int):
             The number of bids and asks on each side of the price.
         step_size (int):
@@ -28,8 +33,10 @@ class KandelConfig(TypedDict):
     """
 
     initial_capital: float
+    decimals_diff: int
     performance_fees: float
     vol_mult: float
+    range_mult: float
     n_points: int
     step_size: int
     window: int
@@ -56,16 +63,16 @@ class Kandel:
             The capital at the beginning of the current position.
         vol (float):
             The volatility on past window.
-        price_grid (list[float]):
-            The price grid.
+        ticks_grid (list[int]):
+            The ticks grid.
         order_book (OrderBook):
             The order book.
         is_active (bool):
             The flag to check if the strategy is active.
 
     Methods:
-        _update_price_grid(self) -> None:
-            Update the geometrical price grid for orders distribution.
+        _update_ticks_grid(self) -> None:
+            Update the geometrical ticks grid for orders distribution.
         rebalance(self) -> float:
             Rebalance the order book on the current spot price.
         exit(self) -> None:
@@ -104,33 +111,49 @@ class Kandel:
         self.open_price = spot_price
         self.open_capital = config["initial_capital"]
         self.vol = vol
-        self.price_grid = []
-        self._update_price_grid()
+        self.ticks_grid = []
+        self._update_ticks_grid()
         self.order_book = OrderBook(
             initial_price=spot_price,
+            decimals_diff=config["decimals_diff"],
         )
         self.order_book.build_book(
             capital=config["initial_capital"],
-            price_grid=self.price_grid,
+            ticks_grid=self.ticks_grid,
         )
         self.is_active = True
         if self.should_exit(exit_vol):
             self.exit()
 
-    def _update_price_grid(self) -> None:
+    def _update_ticks_grid(self) -> None:
         """
-        Compute the geometrical price grid for orders distribution based on the current spot price, vol and config.
+        Compute the geometrical ticks grid for orders distribution based on the current spot price, vol and config.
         """
-        range_multiplier = np.exp(self.config["vol_mult"] * self.vol)
-        gridstep = range_multiplier ** (1 / self.config["n_points"])
-        bids = [
-            self.spot_price / gridstep**i for i in range(1, self.config["n_points"] + 1)
-        ]
-        asks = [
-            self.spot_price * gridstep**i for i in range(1, self.config["n_points"] + 1)
-        ]
+        if self.config["vol_mult"] != 0:
+            range_multiplier = np.exp(self.config["vol_mult"] * self.vol)
+            gridstep = range_multiplier ** (1 / self.config["n_points"])
+        else:
+            gridstep = self.config["range_mult"] ** (1 / self.config["n_points"])
+        min_tick = price_to_tick(
+            self.spot_price / gridstep ** self.config["n_points"],
+            self.config["decimals_diff"],
+        )
+        max_tick = price_to_tick(
+            self.spot_price * gridstep ** self.config["n_points"],
+            self.config["decimals_diff"],
+        )
 
-        self.price_grid = bids[::-1] + [self.spot_price] + asks
+        self.ticks_grid = np.unique(
+            np.linspace(
+                min_tick,
+                max_tick,
+                self.config["n_points"] * 2 + 1,
+                dtype=int,
+            )
+        ).tolist()
+
+        if len(self.ticks_grid) % 2 != 1:
+            self.ticks_grid = self.ticks_grid[:-1]
 
     def rebalance(self) -> float:
         """
@@ -139,7 +162,7 @@ class Kandel:
         Returns:
             float: The generated fees.
         """
-        self._update_price_grid()
+        self._update_ticks_grid()
         capital = self.quote + self.base * self.spot_price
         generated_fees = (
             (capital - self.open_capital) * self.config["performance_fees"]
@@ -148,7 +171,8 @@ class Kandel:
         )
         capital -= generated_fees
 
-        self.order_book.build_book(capital=capital, price_grid=self.price_grid)
+        self.order_book.current_price = self.spot_price
+        self.order_book.build_book(capital=capital, ticks_grid=self.ticks_grid)
 
         self.quote = capital / 2
         self.base = self.quote / self.spot_price
@@ -174,7 +198,7 @@ class Kandel:
             self.quote = (self.quote + self.base * self.spot_price) / 2
             self.base = self.quote / self.spot_price
 
-        self.order_book.build_book(capital=0, price_grid=[])
+        self.order_book.build_book(capital=0, ticks_grid=[])
         self.is_active = False
 
     def should_exit(self, exit_vol: float) -> bool:
